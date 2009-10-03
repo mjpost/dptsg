@@ -4,6 +4,12 @@
 # Right-binarizes each node of a parse tree, naming intermediate nodes
 # xbar style.
 
+my $basedir;
+BEGIN {
+  $basedir = "$ENV{HOME}/code/dpinfer";
+  unshift @INC, $basedir;
+}
+
 use strict;
 use warnings;
 use tree;
