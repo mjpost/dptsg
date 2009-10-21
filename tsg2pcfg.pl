@@ -30,6 +30,12 @@ while (my $line = <>) {
   $SENTNO++; 
 
   my $subtree = build_subtree($line,$lexicon);
+  {
+    # some subtrees have the top-level node (beneath TOP) marked as an
+    # internal node.  remove this when flattening
+    my $kid = @{$subtree->{children}}[0];
+    $kid->{label} =~ s/^\*//;
+  }
   walk($subtree,[\&delete_nodes]);
   print build_subtree_oneline($subtree,1), $/;
   walk($subtree,[\&verify_one_head]);
@@ -67,7 +73,7 @@ sub delete_nodes {
         # marked as the head (and another child is), we need to remove
         # the head markings from all the children we are bringing up
         if ($headpos >= 0 and $headpos != $kidno) {
-          map { $_->{label} =~ s/\*$// } @{$kid->{children}};
+          map { $_->{label} =~ s/^(.*[^\\])\*$/$1/ } @{$kid->{children}};
         }
 
         # if the internal node is a preterminal, rename it so that it
@@ -95,7 +101,7 @@ sub verify_one_head {
     my $numkids = @{$node->{children}};
     for my $kidno (0..$numkids-1) {
       my $kid = @{$node->{children}}[$kidno];
-      $headcount++ if ($kid->{label} =~ /\*$/);
+      $headcount++ if has_marked_head($kid);
     }
 
     die "* FATAL: sentence $SENTNO " . ruleof($node). " has $headcount heads\n"
@@ -105,7 +111,7 @@ sub verify_one_head {
 
 sub has_marked_head {
   my ($node) = @_;
-  return ($node->{label} =~ /\*$/) ? 1 : 0;
+  return ($node->{label} =~ /[^\\]\*$/) ? 1 : 0;
 }
 
 sub is_internal {
