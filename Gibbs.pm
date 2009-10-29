@@ -295,7 +295,7 @@ sub sample_each_structure {
   # 1. Randomly choose whether to delete each of the children,
   # quitting when a deletion decision is made.  To facilitate mixing,
   # we consider the children in a random order.
-  my @kid_indexes = shuffle(0..$tree->{numkids}-1);
+  my @kid_indexes = shuffle(0..@{$tree->{children}}-1);
   foreach my $kidno (@kid_indexes) {
     my $kid = $tree->{children}[$kidno];
     my $numgrandkids = @{$kid->{children}};
@@ -495,6 +495,28 @@ sub sample_each_structure {
     }
   }
 
+  # 3. Randomly rename a child node.  Try all children (in random
+  # order) until you've either gone through them all or succeed with
+  # one of them.
+  # my @kid_indexes = shuffle(0..@{$tree->{children}}-1);
+  # foreach my $kid_index (@kid_indexes) {
+  #   $changed = 0;
+  #   # first, choose whether to rename the node; next choose what to rename it to
+  #   # A. should we rename?
+  #   {
+  #     # subtract the relevant counts
+      
+  #     # compute the probabilities
+
+  #     # compute their ratio
+
+  #     # decide
+  #   }
+
+    
+  #   last if $changed;
+  # }
+
   # recurse   
   my $kidno = 1;
   foreach my $kid (@{$tree->{children}}) {
@@ -525,6 +547,11 @@ sub prob {
 
   my $num = $count + $self->{alpha} * $self->{base_measure}->($self,$rep);
   my $denom = $self->{size}->{$lhs} + $self->{alpha};
+
+  if (! exists $self->{size}->{$lhs}) {
+    print "NO LHS $lhs\n";
+    exit;
+  }
 
   if ($verb) {
     print "PROB($rep->{str})\n";
