@@ -18,10 +18,12 @@ use TSG;
 
 my %PARAMS = (
   lexicon => "$basedir/data/lex.02-21",
+  thresh => 2,
+  detach => 0,   # forcibly detach all preterminals
 );
 process_params(\%PARAMS,\@ARGV,\%ENV);
 
-my $lexicon = read_lexicon($PARAMS{lexicon});
+my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
 
 my $SENTNO = 0;
 while (my $line = <>) {
@@ -79,9 +81,13 @@ sub delete_nodes {
         # if the internal node is a preterminal, rename it so that it
         # expands deterministically to its child; otherwise, delete it.
         if (is_preterminal($kid)) {
-          my $grandkid = @{$kid->{children}}[0];
-          $kid->{label} = clean($kid->{label}) ."_". delex($grandkid->{label});
-          $kid->{label} .= '*' if ($headpos >= 0 and $headpos == $kidno);
+          if ($PARAMS{detach}) {
+            $kid->{label} =~ s/^\*//;
+          } else {
+            my $grandkid = @{$kid->{children}}[0];
+            $kid->{label} = clean($kid->{label}) ."_". delex($grandkid->{label});
+            $kid->{label} .= '*' if ($headpos >= 0 and $headpos == $kidno);
+          }
         } else {
           splice @{$node->{children}}, $kidno, 1, @{$kid->{children}};
         }
