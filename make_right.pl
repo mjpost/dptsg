@@ -12,7 +12,7 @@ BEGIN {
 
 use strict;
 use warnings;
-use tree;
+use TSG;
 
 while (my $line = <>) {
   chomp($line);

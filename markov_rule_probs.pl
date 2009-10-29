@@ -10,7 +10,7 @@ use strict;
 use warnings;
 use threads;
 use List::Util qw|reduce min max sum|;
-use tree;
+use TSG;
 
 my %PARAMS = (
   alpha => 10,  # DP parameter
