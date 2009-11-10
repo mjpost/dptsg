@@ -5,7 +5,7 @@ use Exporter;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
-@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos count rep binarize_subtree binarize_grammar diffuse_rule_probs extract_rules_subtree signature mark_subtree_height count_subtree_lex subtree_frontier count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_preterminal process_params|;
+@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos count rep binarize_subtree binarize_grammar diffuse_rule_probs extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
@@ -33,7 +33,6 @@ sub delex {
 sub islex {
   my $arg = shift;
   my $islex = ($arg =~ /^_.*_$/) ? 1 : 0;
-#   print "ISLEX($arg) = $islex\n";
   return $islex;
 }
 
@@ -79,20 +78,11 @@ sub prune {
 }
 
 sub ruleof {
-  my $node = shift;
-
-  my $numkids = scalar @{$node->{children}};
-  my $rule = "($node->{label} ";
-  if ($numkids) {
-    $rule .= join " ", (map { $_->{label} } @{$node->{children}});
-  } else {
-    $rule .= $node->{head};
+  my ($node) = @_;
+  if (scalar @{$node->{children}}) {
+    return "($node->{label} " . join(" ", map { $_->{label} } @{$node->{children}}) . ")";
   }
-  $rule .= ")";
-
-  $rule =~ s/\*//g;
-
-  return $rule;
+  return "($node->{label})";
 }
 
 # return a hash representation of the subtree
@@ -649,13 +639,7 @@ sub frontier {
 
   (@{$node->{children}}) 
       ? join(" ", map { frontier($_) } @{$node->{children}})
-      : $node->{head};
-}
-
-sub subtree_frontier {
-  my ($node) = @_;
-
-  return $node->{frontier};
+      : delex($node->{label});
 }
 
 # counts leaves in a subtree, both nonterminal and terminal
@@ -703,8 +687,18 @@ sub lhsof {
   return $lhs;
 }
 
+sub is_terminal {
+  my ($node) = @_;
+  return islex($node->{label});
+}
+
 sub is_preterminal {
   my ($node) = @_;
+
+  # if (! defined $node->{children}) {
+  #   print "NO KIDS FOR $node->{label}\n";
+  #   exit;
+  # }
 
   if (1 == @{$node->{children}}) {
     my $kid = @{$node->{children}}[0];
