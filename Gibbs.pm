@@ -434,20 +434,16 @@ sub subtract {
   foreach my $rhs (@rhs) {
     if (islex($rhs)) {
       # terminals
-      print "TERMINALS($lhs -> $rhs) = $self->{terminals}{$lhs}{$rhs}\n";
       decrement($self->{terminals}{$lhs},$rhs);
-      print "TERMINALS($lhs -> $rhs) = $self->{terminals}{$lhs}{$rhs}\n";
-      print "TERMINALS[$lhs] = $self->{totals}{terminals}{$lhs}\n";
+      # print "TERMINALS($lhs -> $rhs) = $self->{terminals}{$lhs}{$rhs}\n";
+      # print "TERMINALS[$lhs] = $self->{totals}{terminals}{$lhs}\n";
       decrement($self->{totals}{terminals},$lhs);    
-      print "TERMINALS[$lhs] = $self->{totals}{terminals}{$lhs}\n";
     } else { 
       # pairs
-      print "PAIRS($lhs -> $rhs) = $self->{pairs}{$lhs}{$rhs}\n";
       decrement($self->{pairs}{$lhs},$rhs);
-      print "PAIRS($lhs -> $rhs) = $self->{pairs}{$lhs}{$rhs}\n";
-      print "PAIRS[$lhs] = $self->{totals}{pairs}{$lhs}\n";
+      # print "PAIRS($lhs -> $rhs) = $self->{pairs}{$lhs}{$rhs}\n";
+      # print "PAIRS[$lhs] = $self->{totals}{pairs}{$lhs}\n";
       decrement($self->{totals}{pairs},$lhs);
-      print "PAIRS[$lhs] = $self->{totals}{pairs}{$lhs}\n";
     }
   }
 }
@@ -464,7 +460,7 @@ sub prob {
   my $lhs = lhsof($rule);
 
   my $count = (exists $self->{counts}->{$rule}) ? $self->{counts}->{$rule} : 0;
-  my $backoff_prob = prob_both($self,$rule);
+  my $backoff_prob = prob_ind($self,$rule);
   my $total = $self->totals("rewrites");
   my $alpha = $self->alphas("rewrites");
   my $num = $count + $alpha * $backoff_prob;
@@ -497,18 +493,22 @@ sub alphas {
   my ($self,$which) = @_;
 
   die "* FATAL: no such alpha '$which'"
-      if ($which ne "terminals" and $which ne "rewrites" and $which ne "pairs");
+      if ($which ne "terminals" &&
+          $which ne "rewrites" && 
+          $which ne "nts" && 
+          $which ne "pairs");
   return $self->{alphas}{$which};
 }
 
 sub totals {
   my ($self,$lhs,$which) = @_;
 
-  if ($which eq "terminals" or $which eq "nts") {
-    return $self->totals->{$which}->{$lhs};
-  } else {
-    die "* FATAL: no such alpha '$which'";
-  }
+  die "* FATAL: no such total '$which'"
+      if ($which ne "terminals" &&
+          $which ne "rewrites" && 
+          $which ne "nts" && 
+          $which ne "pairs");
+  return $self->{totals}{$which};
 }
 
 # draw from an lhs-specific Dirichlet distribution over terminals
@@ -553,8 +553,8 @@ sub prob_pair {
 sub prob_ruletype {
   my ($self,$lhs) = @_;
 
-  my $as_nonterm = self->totals($lhs,"pairs") + 1;
-  my $as_term = self->totals($lhs,"terminals") + 1;
+  my $as_nonterm = $self->totals($lhs,"pairs") + 1;
+  my $as_term = $self->totals($lhs,"terminals") + 1;
   return (1.0 * $as_nonterm / ($as_nonterm + $as_term));
   # my $alpha = $self->alphas("ruletype");
   # return (1.0 * ($as_nonterm + 0.5 * $alpha) / ($as_nonterm + $as_term + $alpha));
