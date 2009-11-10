@@ -116,7 +116,7 @@ sub corpus {
 
       foreach my $kid (@{$node->{children}}) {
         my $lab = $kid->{label};
-        if (is_terminal($kid)) {
+        if (islex($kid->{label})) {
           $self->{terminals}{$lhs}{$lab}++;
           $self->{totals}{terminals}{$lhs}++;
         } else {
@@ -236,7 +236,7 @@ sub sample_each_insert {
         $tree->{numkids} = scalar @{$tree->{children}};
         $newnode->{numkids} = scalar @{$newnode->{children}};
 
-        map { add($_) } ($new_rule,$new_rule2);
+        map { $self->add($_) } ($new_rule,$new_rule2);
         $self->{nts}->[$newnode->{label}]++;
 
         last;
@@ -247,7 +247,7 @@ sub sample_each_insert {
         splice @{$tree->{children}}, $s, 1, @{$newnode->{children}};
 
         # restore the counts
-        map { add($_) } $current_rule;
+        map { $self->add($_) } $current_rule;
 
         last;
       }
@@ -316,7 +316,7 @@ sub sample_each_delete {
       $tree->{numkids} = scalar @{$tree->{children}};
 
       # increase the rule count
-      map { add($_) } ($new_rule);
+      map { $self->add($_) } ($new_rule);
 
       # only delete one child at a time
       last;
@@ -325,7 +325,7 @@ sub sample_each_delete {
       my @grandkids = splice @{$tree->{children}}, $kidno, $numgrandkids, $deleted_node;
 
       # restore the counts
-      map { add($_) } ($current_rule, $kid_rule);
+      map { $self->add($_) } ($current_rule, $kid_rule);
       $self->{nts}->[$kid->{label}]++;
 
       last;
@@ -377,13 +377,13 @@ sub sample_each_rename {
       $self->{renamings}++;
 
       # add in the new counts
-      map { add($_) } ($new_rule1,$new_rule2);
+      map { $self->add($_) } ($new_rule1,$new_rule2);
       $self->{nts}->[$u]++;
     } else {
       # restore the old label
       $kid->{label} = $oldlabel;
       # add in the new counts
-      map { add($_) } ($current_rule1,$current_rule2);
+      map { $self->add($_) } ($current_rule1,$current_rule2);
       $self->{nts}->[$oldlabel]++;
     }
 
@@ -405,24 +405,22 @@ sub add {
   $self->{totals}{rewrites}{$lhs}++;
 
   foreach my $rhs (@rhs) {
-    if (is_terminal($rhs)) {
+    if (islex($rhs)) {
       # terminals
       $self->{terminals}{$lhs}{$rhs}++;
-      $self->{totals}{terminals}{$lhs}{$rhs}++;    
+      $self->{totals}{terminals}{$lhs}++;    
     } else { 
       # pairs
       $self->{pairs}{$lhs}{$rhs}++;
-      $self->{totals}{pairs}{$lhs}{$rhs}++;
+      $self->{totals}{pairs}{$lhs}++;
     }
   }
 }
 
-
-
 sub subtract {
   my ($self,$rule) = @_;
   
-  print "SUBTRACT($rule)\n";
+  # print "SUBTRACT($rule)\n";
   my ($lhs,@rhs) = split(' ',$rule);
   $lhs     =~ s/^\(//;
   $rhs[-1] =~ s/\)$//;
@@ -461,33 +459,26 @@ sub prob {
 
   my $count = (exists $self->{counts}->{$rule}) ? $self->{counts}->{$rule} : 0;
   my $backoff_prob = prob_ind($self,$rule);
-  my $total = $self->totals("rewrites");
+  my $total = $self->totals($lhs,"rewrites");
   my $alpha = $self->alphas("rewrites");
   my $num = $count + $alpha * $backoff_prob;
   my $denom = $total + $alpha;
 
   # print "  PROB($rule) = ($count + $self->{alpha} * $base_prob) / $denom = ", ($num/$denom), $/;
 
-  if (! exists $self->{size}->{$lhs}) {
-    print "NO LHS $lhs\n";
-    exit;
-  }
-
-  if ($verb) {
-    print "PROB($rule)\n";
-    print "  counts = $count\n";
-    print "  alpha = $self->{alpha}\n";
-    print "  size = $self->{size}->{$lhs}\n";
-    print "  backoff prob = ", prob2($self,$rule), $/;
-    print "  ", $self->{base_measure}->($self,$rule,1), $/;
-    print "  NUM = $num\n";
-    print "  DEN = $denom\n";
-  }
+  # if ($verb) {
+  #   print "PROB($rule)\n";
+  #   print "  counts = $count\n";
+  #   print "  alpha = $self->{alpha}\n";
+  #   print "  size = $self->{size}->{$lhs}\n";
+  #   print "  backoff prob = ", prob2($self,$rule), $/;
+  #   print "  ", $self->{base_measure}->($self,$rule,1), $/;
+  #   print "  NUM = $num\n";
+  #   print "  DEN = $denom\n";
+  # }
 
   return $num / $denom;
 }
-
-
 
 sub alphas {
   my ($self,$which) = @_;
@@ -532,7 +523,7 @@ sub prob_pair {
 
   # prob = ((count of pair) + alpha * (nt-specific stick prob)) / (total(lhs) + alph)
   my $count = (exists $self->{pairs}{$lhs}{$rhs}) ? $self->{pairs}{$lhs}{$rhs} : 0;
-  my $alpha = $self->alphas("pair");
+  my $alpha = $self->alphas("pairs");
   my $total = $self->totals($lhs,"pairs");
   my $gem_prob = $self->prob_gem($rhs);
   my $num = $count + $alpha * $gem_prob;
@@ -572,11 +563,11 @@ sub prob_ind {
   my $weight = $self->prob_ruletype($lhs);
 
   my $prob = 1.0;
-  foreach my $kid (@rhs) {
-    if (is_terminal($kid)) {
-      $prob *= (1.0 - $weight) * $self->prob_terminal($lhs,$kid);
+  foreach my $rhs (@rhs) {
+    if (islex($rhs)) {
+      $prob *= (1.0 - $weight) * $self->prob_terminal($lhs,$rhs);
     } else {
-      $prob *= ($weight) * $self->prob_pair($lhs,$kid) 
+      $prob *= ($weight) * $self->prob_pair($lhs,$rhs) 
     }
   }
   return $prob;
@@ -587,7 +578,7 @@ sub prob_ind {
 sub prob_gem {
   my ($self,$k) = @_;
 
-  return $self->{nts}{$k};
+  return $self->{nts}->[$k] / $self->{totals}{nts};
 }
 
 
@@ -651,7 +642,7 @@ sub random_multinomial {
   my ($self) = @_;
 
   my $alpha = $self->alphas("nts");
-  my $total = $self->totals("nts") + $alpha;
+  my $total = $self->{totals}{nts} + $alpha;
   my @pdf    = map { $_ / $total } (@${$self->{nts}},$alpha);
 
   my $prob = rand;
