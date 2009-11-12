@@ -15,7 +15,7 @@ use warnings;
 use threads;
 use threads::shared;
 use POSIX qw|strftime|;
-use List::Util qw|reduce min shuffle|;
+use List::Util qw|reduce min shuffle sum|;
 # use Memoize;
 
 my $basedir;
@@ -160,7 +160,7 @@ sub corpus {
   }
 }
 
-my $debug = 1;
+my $debug = 0;
 my $loghandle;
 
 # visits each node in the corpus and makes random sampling decisions
@@ -398,52 +398,50 @@ sub sample_each_rename {
     my $numgrandkids = @{$kid->{children}};
     last unless $numgrandkids;
 
+    # record the child's current label
     my $oldlabel = $kid->{label};
 
+    # subtract the counts
     my $current_rule1 = ruleof($tree);
     my $current_rule2 = ruleof($kid);
-    $self->subtract($current_rule1);
+    $self->subtract(ruleof($tree));
     $self->{nts}->[$kid->{label}]--;
-    $self->subtract($current_rule2);
-    my $prob_stay = $self->prob($current_rule1) * $self->prob($current_rule2);
+    $self->subtract(ruleof($kid));
 
-    $kid->{label} = $u;
-    my $new_rule1 = ruleof($tree);
-    my $new_rule2 = ruleof($kid);
-    my $prob_change = $self->prob($new_rule1) * $self->prob($new_rule2);
+    # build the conditional distribution
+    my $num_nts = @{$self->{nts}};
+    my @dist;
+    foreach my $nonterm (0..$num_nts-1) {
+      $kid->{label} = $nonterm;
+      my $rule1 = ruleof($tree);
+      my $rule2 = ruleof($kid);
+      my $prob_change = $self->prob($rule1) * $self->prob($rule2);
+      push(@dist,$prob_change);
+    }
+    # and randomly sample from it
+    my $newlabel = random_multinomial(\@dist);
 
-    my $prob_rename = ($prob_change / ($prob_stay + $prob_change));
-    my $do_rename = rand_transition($prob_rename);
-
-    print "$self->{treeno} $do_rename PROB ", sprintf("%.3g",$prob_rename)," (RENAME ", sprintf("%.3g",$prob_change)," STAY ",sprintf("%.3g",$prob_stay),")\n"
+    print "$self->{treeno} RENAME old $oldlabel ($dist[$oldlabel]) new $newlabel ($dist[$newlabel])\n"
         if $debug;
 
-    if ($do_rename) {
-      $self->{renamings}++;
+    # assign the new label
+    $kid->{label} = $newlabel;
 
-      # add in the new counts
-      map { $self->add($_) } ($new_rule1,$new_rule2);
+    # restore the counts
+    map { $self->add($_) } (ruleof($tree),ruleof($kid));
 
-      if ($is_new) {
-        # if this is a new nonterminal, set its count to one, and add
-        # the appropriate alpha to the end of the array of
-        # nonterminals
-        $self->{nts}->[$u] = 1;
-        push(@{$self->{nts}}, 0);
-      } else {
-        # otherwise, increment the count of the new nonterminal
-        $self->{nts}->[$u]++;
-      }
-
-       last;
+    # if this is a newly generated nonterminal, set its count to one, and create a
+    # new new nonterminal for possible later selection
+    if ($newlabel == $num_nts - 1) {
+      $self->{nts}->[$newlabel] = 1;
+      push(@{$self->{nts}}, 0);
     } else {
-      # restore the old label
-      $kid->{label} = $oldlabel;
-      # restore the nonterminal count of the old label
-      $self->{nts}->[$oldlabel]++;
-
-      # add back in the counts of the current rules
-      map { $self->add($_) } ($current_rule1,$current_rule2);
+      # otherwise if it's an existing label, increment its count
+      $self->{nts}->[$newlabel]++;
+    }
+    
+    if ($newlabel != $oldlabel) {
+      $self->{renamings}++;
     }
   }
 }
