@@ -5,7 +5,7 @@ use Exporter;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
-@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos count rep binarize_subtree binarize_grammar diffuse_rule_probs extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params|;
+@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos count rep binarize_subtree binarize_grammar diffuse_rule_probs extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
@@ -36,16 +36,18 @@ sub islex {
   return $islex;
 }
 
-# used by prune
+# used by prune -- returns true if node should be pruned
 sub pruneit {
   my $node = shift;
   my @kids = @{$node->{children}};
   my $prune;
 
-  # base case
-  if (@kids == 0) {
-    $prune = grep /^$node->{label}$/, @INVALID_POS;
-  } else {
+  # base case -- prune preterminals with an invalid POS
+  if (is_preterminal($node)) {
+    my $label = $node->{label};
+    $prune = grep /^$label$/, @INVALID_POS;
+  } elsif (@{$node->{children}}) {
+    # recursive case -- prune interior nodes whose all children are removed
     my $count = sum map { pruneit($_) } @kids;
     $prune = ($count == scalar @kids);
   }
@@ -59,18 +61,23 @@ sub prune {
 
   map { prune($_) } @{$node->{children}};
 
-  my @kids;
+  my (@keep,@prune);
   foreach my $kid (@{$node->{children}}) {
-    push @kids, $kid unless pruneit($kid);
+    if (pruneit($kid)) {
+      push(@prune,$kid);
+    } else {
+      push(@keep,$kid);
+    }
   }
 
-  if (@kids) {
-    $node->{children} = \@kids;
-    my $hpos = &head_pos(clean($node->{label}), map {clean($_->{label})} @kids);
+  if (@keep) {
+    $node->{children} = \@keep;
+    $node->{numkids} = scalar @keep;
+    my $hpos = &head_pos(clean($node->{label}), map {clean($_->{label})} @keep);
     $node->{hpos} = $hpos;
-    $node->{head} = $kids[$hpos]->{head};
-    $node->{headtag} = $kids[$hpos]->{headtag};
-    $node->{rule} = $node->{label}." -> ".join(' ', map {$_->{label}} @kids);
+    $node->{head} = $keep[$hpos]->{head};
+    $node->{headtag} = $keep[$hpos]->{headtag};
+    $node->{rule} = $node->{label}." -> ".join(' ', map {$_->{label}} @keep);
 #     print "NEW NODE: $node->{label} $node->{hpos} $node->{head} $node->{headtag} $node->{rule}\n";
   }
 
@@ -306,6 +313,16 @@ sub build_subtree {
   $top;
 }
 
+# removes treebank 2 information from nodes
+sub scrub_node {
+  my ($node) = @_;
+
+  if (@{$node->{children}}) {
+    $node->{label} =~ s/(.)-.+[-.+]?/$1/;  # remove treebank2 info
+    $node->{label} =~ s/=.+//;
+  }
+}
+
 sub build_subtree_oneline {
   my ($node,$delex) = @_;
 
@@ -322,19 +339,6 @@ sub build_subtree_oneline {
   }
 
   return $str;
-}
-
-# returns the level of binarization (the distance from the bottom of
-# the binarization) of a nonterminal, e.g.,
-# S                  => 0
-# <S:NP:VP>          => 1
-# <S:NP:<VP:VBD:VP>> => 2
-sub bin_level {
-  my $arg = shift;
-  my $lhs = (split(' ',$arg))[0];
-  my $count = 0;
-  $count++ while $lhs =~ /</g;
-  return $count;
 }
 
 sub escape {
