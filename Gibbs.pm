@@ -36,21 +36,23 @@ sub new {
     rundir => $ENV{PWD},
     verbosity => 1,
     alphas => {
-      nts => 10,          # number of nonterminals
-      terminals => 10,
-      pairs => 10,
-      rewrites => 10,
+      nts => 100,          # number of nonterminals
+      terminals => 100,
+      pairs => 100,
+      rewrites => 100,
     },
     totals => {
       nts => 0,               # number of nodes in corpus
       terminals => {},        # total number of terminal rewrites for each lhs
       pairs => {},            # total number of nonterminal rewrites for each lhs
       rewrites => {},         # total number of rule rewrites for each lhs
+      words => {}             # total number of words seen in the training data
     },
     nts => [],                # stick-breaking construction over nonterminals
     rewrites => {},           # counts of lhs -> {N U T}* (a string of terms and nts)
     pairs => {},              # counts of lhs -> N (a nonterminal)
     terminals => {},          # counts of lhs -> T (a terminal)
+    words => {}
   };
 
   map { $self->{$_} = $params{$_} } keys %params;
@@ -95,6 +97,7 @@ sub corpus {
   $self->{pairs} = {};
   $self->{terminals} = {};
   $self->{totals}{nts} = 0;
+  $self->{totals}{words} = 0;
   $self->{totals}{terminals} = {};
   $self->{totals}{pairs} = {};
   $self->{totals}{rewrites} = {};
@@ -124,15 +127,40 @@ sub corpus {
           $self->{totals}{pairs}{$lhs}++;
         }
       }
+    } else {
+      # terminal
+      $self->{words}{$lhs}++;
+      $self->{totals}{words}++;
     }
   };
 
   # walk over the nodes of each tree in the corpus, applying the
   # closures defined above to each of them
   map { walk($_,[$count]) } @$corpus;
+
+  # we need to seed the set of nonterminals with alpha (added when the array is sampled, put a 0 there now)
+  push(@{$self->{nts}},0);
+
+  # print out the counts
+  print "TOTAL nts $self->{totals}{nts}\n";
+  foreach my $word (qw/rewrites pairs terminals/) {
+    while (my ($lhs,$total) = each %{$self->{totals}{$word}}) {
+      print "TOTAL $word $lhs $total\n"
+    }
+  }
+  foreach my $lhs (0..@{$self->{nts}}-1) {
+    print "COUNT nt $lhs $self->{nts}->[$lhs]\n";
+  }
+  foreach my $word (qw/rewrites pairs terminals/) {
+    while (my ($lhs,$hash) = each %{$self->{$word}}) {
+      while (my ($rhs,$val) = each %$hash) {
+        print "COUNT $word $lhs $rhs $val\n"
+      }
+    }
+  }
 }
 
-my $debug = 0;
+my $debug = 1;
 my $loghandle;
 
 # visits each node in the corpus and makes random sampling decisions
@@ -145,10 +173,14 @@ sub sample_all {
   $self->{insertions} = 0;
   $self->{renamings} = 0;
 
-  foreach my $tree (@{$self->{corpus}}) {
-    # print "ITER $iter TREE $self->{treeno}\n" if $self->{verbosity};
+  my @funcs = (\&sample_each_insert, \&sample_each_delete, \&sample_each_rename);
+  # my @funcs = (\&sample_each_rename);
 
-    walk($tree, [\&sample_each_insert], $self);
+  foreach my $tree (@{$self->{corpus}}) {
+    # print "ITER $iter TREE $self->{treeno} ins:$self->{insertions} del:$self->{deletions} ren:$self->{renamings}\n" if $self->{verbosity} and (! $self->{treeno} % 100);
+
+    my $func = $funcs[rand(@funcs)];
+    walk($tree, [$func], $self);
     # map { $self->sample_each_structure($_,rep($tree,$_)) } @{$tree->{children}};
 
     $self->{treeno}++;
@@ -224,10 +256,12 @@ sub sample_each_insert {
       my $new_rule2 = ruleof($newnode);
       my $prob_insert = $self->prob($new_rule) * $self->prob($new_rule2);
 
-      # print "$self->{treeno} INSERT $prob_insert STAY $prob_stay\n";
 
       my $insert_prob = ($prob_insert / ($prob_insert + $prob_stay));
       my $do_insert = rand_transition($insert_prob);
+
+      print "$self->{treeno} $do_insert PROB ", sprintf("%.3g",$prob_insert)," (INSERT ", sprintf("%.3g",$prob_insert)," STAY ",sprintf("%.3g",$prob_stay),")\n"
+          if $debug;
 
       if ($do_insert) {
         $self->{insertions}++;
@@ -238,6 +272,7 @@ sub sample_each_insert {
 
         map { $self->add($_) } ($new_rule,$new_rule2);
         $self->{nts}->[$newnode->{label}]++;
+        $self->{totals}{nts}++;
 
         last;
       } else {
@@ -248,8 +283,6 @@ sub sample_each_insert {
 
         # restore the counts
         map { $self->add($_) } $current_rule;
-
-        last;
       }
     }
   }
@@ -292,6 +325,7 @@ sub sample_each_delete {
     my $kid_rule     = ruleof($kid);
     $self->subtract($current_rule);
     $self->{nts}->[$kid->{label}]--;
+    $self->{totals}{nts}--;
     $self->subtract($kid_rule);
   
     # print "DELETE PROB STAY ($current_rule, $kid_rule)\n";
@@ -327,6 +361,7 @@ sub sample_each_delete {
       # restore the counts
       map { $self->add($_) } ($current_rule, $kid_rule);
       $self->{nts}->[$kid->{label}]++;
+      $self->{totals}{nts}++;
 
       last;
     }
@@ -346,9 +381,16 @@ sub sample_each_rename {
 
   # choose a new label
   my $u = $self->random_nonterminal();
+  my $num_nts = scalar @{$self->{nts}};
+  my $is_new = ($u == $num_nts - 1) ? 1 : 0;
+
+  # if ($is_new) {
+  #   print "$u is NEW $num_nts!!!!!\n";
+  #   print join(" ", @{$self->{nts}}), $/;
+  #   exit if $u > 4;
+  # }
 
   my @kid_indexes = shuffle(0..@{$tree->{children}}-1);
-  my $changed = 0;
   foreach my $kidno (@kid_indexes) {
     my $kid = $tree->{children}[$kidno];
     next if $kid->{label} eq $u;
@@ -373,23 +415,37 @@ sub sample_each_rename {
     my $prob_rename = ($prob_change / ($prob_stay + $prob_change));
     my $do_rename = rand_transition($prob_rename);
 
+    print "$self->{treeno} $do_rename PROB ", sprintf("%.3g",$prob_rename)," (RENAME ", sprintf("%.3g",$prob_change)," STAY ",sprintf("%.3g",$prob_stay),")\n"
+        if $debug;
+
     if ($do_rename) {
       $self->{renamings}++;
 
       # add in the new counts
       map { $self->add($_) } ($new_rule1,$new_rule2);
-      $self->{nts}->[$u]++;
+
+      if ($is_new) {
+        # if this is a new nonterminal, set its count to one, and add
+        # the appropriate alpha to the end of the array of
+        # nonterminals
+        $self->{nts}->[$u] = 1;
+        push(@{$self->{nts}}, 0);
+      } else {
+        # otherwise, increment the count of the new nonterminal
+        $self->{nts}->[$u]++;
+      }
+
+       last;
     } else {
       # restore the old label
       $kid->{label} = $oldlabel;
-      # add in the new counts
-      map { $self->add($_) } ($current_rule1,$current_rule2);
+      # restore the nonterminal count of the old label
       $self->{nts}->[$oldlabel]++;
+
+      # add back in the counts of the current rules
+      map { $self->add($_) } ($current_rule1,$current_rule2);
     }
-
-    last if $changed;
   }
-
 }
 
 sub add {
@@ -458,24 +514,14 @@ sub prob {
   my $lhs = lhsof($rule);
 
   my $count = (exists $self->{counts}->{$rule}) ? $self->{counts}->{$rule} : 0;
-  my $backoff_prob = prob_ind($self,$rule);
+  my $base_prob = prob_ind($self,$rule);
   my $total = $self->totals($lhs,"rewrites");
   my $alpha = $self->alphas("rewrites");
-  my $num = $count + $alpha * $backoff_prob;
+  my $num = $count + $alpha * $base_prob;
   my $denom = $total + $alpha;
 
-  # print "  PROB($rule) = ($count + $self->{alpha} * $base_prob) / $denom = ", ($num/$denom), $/;
-
-  # if ($verb) {
-  #   print "PROB($rule)\n";
-  #   print "  counts = $count\n";
-  #   print "  alpha = $self->{alpha}\n";
-  #   print "  size = $self->{size}->{$lhs}\n";
-  #   print "  backoff prob = ", prob2($self,$rule), $/;
-  #   print "  ", $self->{base_measure}->($self,$rule,1), $/;
-  #   print "  NUM = $num\n";
-  #   print "  DEN = $denom\n";
-  # }
+  print "PROB($rule) = ($count + $self->{alpha} * $base_prob) / $denom = ", ($num/$denom), $/, "--\n" 
+      if $debug;
 
   return $num / $denom;
 }
@@ -497,9 +543,24 @@ sub totals {
   die "* FATAL: no such total '$which'"
       if ($which ne "terminals" &&
           $which ne "rewrites" && 
-          $which ne "nts" && 
           $which ne "pairs");
-  return $self->{totals}{$which};
+
+  my $count = $self->{totals}{$which}{$lhs} || 0;
+  # print "TOTALS($lhs,$which) = $count\n";
+  return $count;
+}
+
+sub base_prob_terminal {
+  my ($self,$word) = @_;
+
+  my $count = $self->{words}{$word};
+  my $total = $self->{totals}{words};
+
+  my $prob = 1.0 * $count / $total;
+  print "BASE_PROB_TERMINAL($word) = $count / $total = $prob\n"
+      if $debug;
+
+  return $prob;
 }
 
 # draw from an lhs-specific Dirichlet distribution over terminals
@@ -507,13 +568,21 @@ sub prob_terminal {
   my ($self,$lhs,$rhs) = @_;
 
   my $alpha = $self->alphas("terminals");
+  my $base_prob = $self->base_prob_terminal($rhs);
   my $total = $self->totals($lhs,"terminals");
   my $denom = $alpha + $total;
 
   if (exists $self->{terminals}{$lhs}{$rhs}) {
-    return 1.0 * ($self->{terminals}{$lhs}{$rhs}) / $denom;
+    my $count = $self->{terminals}{$lhs}{$rhs};
+    my $prob = ($count + $alpha * $base_prob) / $denom;
+    print "PROB_TERMINAL($lhs -> $rhs) = ($count + $alpha * $base_prob) / $denom = $prob\n"
+        if $debug;
+    return $prob;
   } else {
-    return 1.0 * $alpha / $denom;
+    my $prob = 1.0 * $alpha * $base_prob / $denom;
+    print "PROB_TERMINAL($lhs -> $rhs) = 0 + $alpha * $base_prob / $denom = $prob\n"
+        if $debug;
+    return $prob;
   }
 }
 
@@ -529,7 +598,8 @@ sub prob_pair {
   my $num = $count + $alpha * $gem_prob;
   my $denom = $total + $alpha;
 
-  # print "  PROB($rule) = ($count + $self->{alpha} * $base_prob) / $denom = ", ($num/$denom), $/;
+  print "PROB_PAIR($lhs -> $rhs) = ($count + $alpha * $gem_prob) / $denom = ", ($num/$denom), $/
+      if $debug;
 
   # if (! exists $self->{size}->{$lhs}) {
   #   print "NO LHS $lhs\n";
@@ -546,7 +616,12 @@ sub prob_ruletype {
 
   my $as_nonterm = $self->totals($lhs,"pairs") + 1;
   my $as_term = $self->totals($lhs,"terminals") + 1;
-  return (1.0 * $as_nonterm / ($as_nonterm + $as_term));
+  my $prob = (1.0 * $as_nonterm / ($as_nonterm + $as_term));
+
+  print "PROB_RULETYPE($lhs) = $as_nonterm / ($as_nonterm + $as_term) = $prob\n"
+      if $debug;
+
+  return $prob;
   # my $alpha = $self->alphas("ruletype");
   # return (1.0 * ($as_nonterm + 0.5 * $alpha) / ($as_nonterm + $as_term + $alpha));
 }
@@ -565,11 +640,17 @@ sub prob_ind {
   my $prob = 1.0;
   foreach my $rhs (@rhs) {
     if (islex($rhs)) {
-      $prob *= (1.0 - $weight) * $self->prob_terminal($lhs,$rhs);
+      my $pt = $self->prob_terminal($lhs,$rhs);
+      $prob *= (1.0 - $weight) * $pt;
     } else {
-      $prob *= ($weight) * $self->prob_pair($lhs,$rhs) 
+      my $pp = $self->prob_pair($lhs,$rhs);
+      $prob *= ($weight) * $pp;
     }
   }
+
+  print "PROB_IND($rule) = $prob\n"
+      if $debug;
+
   return $prob;
 }
 
@@ -578,7 +659,17 @@ sub prob_ind {
 sub prob_gem {
   my ($self,$k) = @_;
 
-  return $self->{nts}->[$k] / $self->{totals}{nts};
+  my $alpha = $self->alphas("nts");
+  my $len = scalar @{$self->{nts}};
+  my $count = $self->{nts}->[$k] + $alpha;
+  my $total = $self->{totals}{nts} + $alpha * $len;
+
+  my $prob = $count / $total;
+
+  print "PROB_GEM($k) = $count / $total = $prob\n"
+      if $debug;
+
+  return $prob;
 }
 
 
@@ -600,7 +691,7 @@ sub dump_corpus {
   my ($self,$dir) = @_;
   mkdir $dir unless -d $dir;
 
-  my @corpus = map { build_subtree_oneline($_) } @{$self->{corpus}};
+  my @corpus = map { build_subtree_oneline($_,1) } @{$self->{corpus}};
 
   my $file = "$dir/corpus";
   open DUMP, ">$file" or warn "can't dump to $file";
@@ -635,28 +726,58 @@ sub read_base_grammar {
   close RULES;
 }
 
-# takes an array of length N whose elements are probabilities (the
-# PDF, not the CDF!); if they don't sum to 1, N can be chosen, which
-# could be used to extend the array
+# returns a random element from the array in proportion to the value
+# of those elements
 sub random_multinomial {
-  my ($self) = @_;
+  my ($list) = @_;
 
-  my $alpha = $self->alphas("nts");
-  my $total = $self->{totals}{nts} + $alpha;
-  my @pdf    = map { $_ / $total } (@${$self->{nts}},$alpha);
+  my $len = scalar @$list;
+  my $total = sum(@$list);
+  my $prob = rand($total);
 
-  my $prob = rand;
-
-  my $len = scalar @pdf;
   my $sum = 0.0;
   my $which = 0;
   for (;;) {
-    $sum += $pdf[$which];
+    $sum += $list->[$which];
     last if $sum > $prob;
     $which++;
     last if $which >= $len;
   }
 
+  return $which;
+}
+
+# takes an array of length N whose elements are probabilities (the
+# PDF, not the CDF!); if they don't sum to 1, N can be chosen, which
+# could be used to extend the array
+sub random_nonterminal {
+  my ($self) = @_;
+
+  my $alpha = $self->alphas("nts");
+
+  # build the array, adding alpha to every element
+  my @nts = map { $_ + $alpha } @{$self->{nts}};
+  my $len = scalar @nts;
+
+  # get a probability
+  my $total = $self->{totals}{nts} + $alpha * $len;
+  my $prob = rand($total);
+
+  # print "RANDOM_NONTERM ($len)\n";
+  # for my $i (0..@{$self->{nts}}-1) {
+  #   print "  $i $self->{nts}->[$i]\n";
+  # }
+
+  my $sum = 0.0;
+  my $which = 0;
+  for (;;) {
+    $sum += $nts[$which];
+    last if $sum > $prob;
+    $which++;
+    last if $which >= $len;
+  }
+
+  # print "  -> CHOSE $which\n";
   return $which;
 }
 
