@@ -179,9 +179,15 @@ sub sample_all {
   foreach my $tree (@{$self->{corpus}}) {
     # print "ITER $iter TREE $self->{treeno} ins:$self->{insertions} del:$self->{deletions} ren:$self->{renamings}\n" if $self->{verbosity} and (! $self->{treeno} % 100);
 
-    my $func = $funcs[rand(@funcs)];
-    walk($tree, [$func], $self);
-    # map { $self->sample_each_structure($_,rep($tree,$_)) } @{$tree->{children}};
+    # $sub is an anonymous function that randomly chooses a function
+    # to apply from the @funcs array; with this we can use the walk
+    # function to randomly choose one of the functions to apply to
+    # each node of each tree
+    my $apply_random_func = sub {
+      my $func = $funcs[rand(@funcs)];
+      $func->(@_);
+    };
+    walk($tree, [$apply_random_func], $self);
 
     $self->{treeno}++;
   }
@@ -197,11 +203,7 @@ sub decrement {
   }
 }
 
-sub is_internal {
-  my ($node) = @_;
-  return $node->{label} =~ /^\*/ ? 1 : 0;
-}
-
+# randomly inserts a new nonterminal over some sequence of children
 sub sample_each_insert {
   my ($tree,$self) = @_;
 
@@ -274,7 +276,6 @@ sub sample_each_insert {
         $self->{nts}->[$newnode->{label}]++;
         $self->{totals}{nts}++;
 
-        last;
       } else {
         # print "NOT DOING INSERT\n";
 
@@ -284,10 +285,15 @@ sub sample_each_insert {
         # restore the counts
         map { $self->add($_) } $current_rule;
       }
+
+      # only try one span (keeping loop to make it easy to change this
+      # if we decide to later on)
+      last;
     }
   }
 }
 
+# randomly deletes a child
 sub sample_each_delete {
   my ($tree,$self) = @_;
 
@@ -351,9 +357,6 @@ sub sample_each_delete {
 
       # increase the rule count
       map { $self->add($_) } ($new_rule);
-
-      # only delete one child at a time
-      last;
     } else {
       # put the node back
       my @grandkids = splice @{$tree->{children}}, $kidno, $numgrandkids, $deleted_node;
@@ -362,12 +365,15 @@ sub sample_each_delete {
       map { $self->add($_) } ($current_rule, $kid_rule);
       $self->{nts}->[$kid->{label}]++;
       $self->{totals}{nts}++;
-
-      last;
     }
+
+    # only try one span (keeping loop to make it easy to change this
+    # if we decide to later on)
+    last;
   }
 }
 
+# samples a new label for a child (many children) from the conditional distribution of labels
 sub sample_each_rename {
   my ($tree,$self) = @_;
 
@@ -379,21 +385,10 @@ sub sample_each_rename {
   my $numkids = $tree->{numkids};
   return unless $numkids;
 
-  # choose a new label
-  my $u = $self->random_nonterminal();
-  my $num_nts = scalar @{$self->{nts}};
-  my $is_new = ($u == $num_nts - 1) ? 1 : 0;
-
-  # if ($is_new) {
-  #   print "$u is NEW $num_nts!!!!!\n";
-  #   print join(" ", @{$self->{nts}}), $/;
-  #   exit if $u > 4;
-  # }
-
+  # randomly pick a child to try to rename
   my @kid_indexes = shuffle(0..@{$tree->{children}}-1);
   foreach my $kidno (@kid_indexes) {
     my $kid = $tree->{children}[$kidno];
-    next if $kid->{label} eq $u;
 
     my $numgrandkids = @{$kid->{children}};
     last unless $numgrandkids;
@@ -415,8 +410,11 @@ sub sample_each_rename {
       $kid->{label} = $nonterm;
       my $rule1 = ruleof($tree);
       my $rule2 = ruleof($kid);
-      my $prob_change = $self->prob($rule1) * $self->prob($rule2);
-      push(@dist,$prob_change);
+      my $prob = $self->prob($rule1) * $self->prob($rule2);
+      push(@dist,$prob);
+
+      print "* ", ruleof($tree), " ", ruleof($kid), " $prob\n"
+          if $debug;
     }
     # and randomly sample from it
     my $newlabel = random_multinomial(\@dist);
@@ -443,9 +441,13 @@ sub sample_each_rename {
     if ($newlabel != $oldlabel) {
       $self->{renamings}++;
     }
+
+    # only try one child (kept in loop, though, in case we change this later)
+    last;
   }
 }
 
+# adds counts of the given $rule
 sub add {
   my ($self,$rule,$amt) = @_;
 
@@ -471,6 +473,7 @@ sub add {
   }
 }
 
+# subtracts counts of the given $rule
 sub subtract {
   my ($self,$rule) = @_;
   
@@ -744,41 +747,6 @@ sub random_multinomial {
 
   return $which;
 }
-
-# takes an array of length N whose elements are probabilities (the
-# PDF, not the CDF!); if they don't sum to 1, N can be chosen, which
-# could be used to extend the array
-sub random_nonterminal {
-  my ($self) = @_;
-
-  my $alpha = $self->alphas("nts");
-
-  # build the array, adding alpha to every element
-  my @nts = map { $_ + $alpha } @{$self->{nts}};
-  my $len = scalar @nts;
-
-  # get a probability
-  my $total = $self->{totals}{nts} + $alpha * $len;
-  my $prob = rand($total);
-
-  # print "RANDOM_NONTERM ($len)\n";
-  # for my $i (0..@{$self->{nts}}-1) {
-  #   print "  $i $self->{nts}->[$i]\n";
-  # }
-
-  my $sum = 0.0;
-  my $which = 0;
-  for (;;) {
-    $sum += $nts[$which];
-    last if $sum > $prob;
-    $which++;
-    last if $which >= $len;
-  }
-
-  # print "  -> CHOSE $which\n";
-  return $which;
-}
-
 
 1;
 
