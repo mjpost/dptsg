@@ -32,7 +32,7 @@ sub new {
   my $self = { 
     beta => {},
     iters => 100,
-    stop => 0.9,
+    stop => 0.5,
     rundir => $ENV{PWD},
     verbosity => 1,
     alphas => {
@@ -142,19 +142,21 @@ sub corpus {
   push(@{$self->{nts}},0);
 
   # print out the counts
-  print "TOTAL nts $self->{totals}{nts}\n";
-  foreach my $word (qw/rewrites pairs terminals/) {
-    while (my ($lhs,$total) = each %{$self->{totals}{$word}}) {
-      print "TOTAL $word $lhs $total\n"
+  if ($self->{verbosity} > 2) {
+    print "TOTAL nts $self->{totals}{nts}\n";
+    foreach my $word (qw/rewrites pairs terminals/) {
+      while (my ($lhs,$total) = each %{$self->{totals}{$word}}) {
+        print "TOTAL $word $lhs $total\n"
+      }
     }
-  }
-  foreach my $lhs (0..@{$self->{nts}}-1) {
-    print "COUNT nt $lhs $self->{nts}->[$lhs]\n";
-  }
-  foreach my $word (qw/rewrites pairs terminals/) {
-    while (my ($lhs,$hash) = each %{$self->{$word}}) {
-      while (my ($rhs,$val) = each %$hash) {
-        print "COUNT $word $lhs $rhs $val\n"
+    foreach my $lhs (0..@{$self->{nts}}-1) {
+      print "COUNT nt $lhs $self->{nts}->[$lhs]\n";
+    }
+    foreach my $word (qw/rewrites pairs terminals/) {
+      while (my ($lhs,$hash) = each %{$self->{$word}}) {
+        while (my ($rhs,$val) = each %$hash) {
+          print "COUNT $word $lhs $rhs $val\n"
+        }
       }
     }
   }
@@ -173,11 +175,12 @@ sub sample_all {
   $self->{insertions} = 0;
   $self->{renamings} = 0;
 
-  my @funcs = (\&sample_each_insert, \&sample_each_delete, \&sample_each_rename);
+  my @funcs = (\&sample_each_insert, \&sample_each_delete, \&sample_each_rename, sub { });
   # my @funcs = (\&sample_each_rename);
 
+  $| = 1;
   foreach my $tree (@{$self->{corpus}}) {
-    # print "ITER $iter TREE $self->{treeno} ins:$self->{insertions} del:$self->{deletions} ren:$self->{renamings}\n" if $self->{verbosity} and (! $self->{treeno} % 100);
+    print "ITER $iter TREE $self->{treeno} ins:$self->{insertions} del:$self->{deletions} ren:$self->{renamings}\n" if $self->{verbosity} and (! ($self->{treeno} % 100));
 
     # $sub is an anonymous function that randomly chooses a function
     # to apply from the @funcs array; with this we can use the walk
@@ -212,20 +215,16 @@ sub sample_each_insert {
   # don't consider preterminal nodes
   return if is_preterminal($tree);
 
-  my $numkids = $tree->{numkids};
-  return unless $numkids;
+  # INSERTIONS Randomly choose a span and then sample from the
+  # conditional distribution of nodes to insert (including inserting
+  # no node).
 
-  # INSERTIONS Randomly decide whether to place a new node over each
-  # contiguous span of children.  As before, quit after succeeding,
-  # and randomize the spans we choose to facilitate mixing.
-
-  if ($tree->{numkids} > 1) {
+  my $numkids = scalar @{$tree->{children}};
+  if ($numkids) {
     # print "INSERT BENEATH($tree->{label})\n";
 
-    my $lhs = $tree->{label};
-
     my @span_indexes;
-    for my $span (2..$tree->{numkids}-1) {
+    for my $span (1..$tree->{numkids}-1) {
       for my $s (0..$tree->{numkids}-$span) {
         my $t = $s + $span - 1;
         push @span_indexes, [$s,$t];
@@ -237,43 +236,50 @@ sub sample_each_insert {
       my ($s,$t) = @{$span_indexes[$index]};
 
       # decrement counts
-      my $current_rule = ruleof($tree);
-      $self->subtract($current_rule);
+      my $oldrule = ruleof($tree);
+      $self->subtract($oldrule);
 
-      my $prob_stay = $self->prob($current_rule);
+      # print "INSERT($oldrule)[$s,$t]\n";
 
-      # print "  BEFORE: ", ruleof($tree), " [$s,$t]$/";
-
-      # create the new node and insert it over the children; the new
-      # node is an internal node only if at least one of kids is an
-      # internal node
-      my $newnode = { label => $tree->{label} };
+      # create the new node
+      my $newnode = { };
+      # replace the children corresponding to the selected span with
+      # newnode, and put those children beneath newnode
       my @deleted = splice(@{$tree->{children}},$s,$t-$s+1,$newnode);
       $newnode->{children} = \@deleted;
 
-      # print "  AFTER1: ", ruleof($tree), $/;
-      # print "  AFTER2: ", ruleof($newnode), $/;
+      # build the conditional distribution
+      my $num_nts = scalar @{$self->{nts}};
+      my $prob_stay = $self->prob($oldrule);
+      # add the probability of not inserting to distribution
+      my @dist = ( $prob_stay );
+      foreach my $nonterm (0..$num_nts-1) {
+        $newnode->{label} = $nonterm;
 
-      my $new_rule  = ruleof($tree);
-      my $new_rule2 = ruleof($newnode);
-      my $prob_insert = $self->prob($new_rule) * $self->prob($new_rule2);
+        my $rule1 = ruleof($tree);
+        my $rule2 = ruleof($newnode);
+        my $prob = $self->prob($rule1) * $self->prob($rule2);
 
+        push(@dist,$prob);
+      }
 
-      my $insert_prob = ($prob_insert / ($prob_insert + $prob_stay));
-      my $do_insert = rand_transition($insert_prob);
+      # map { print "* ", $_-1, " $dist[$_]\n" } (0..$#dist);
 
-      print "$self->{treeno} $do_insert PROB ", sprintf("%.3g",$prob_insert)," (INSERT ", sprintf("%.3g",$prob_insert)," STAY ",sprintf("%.3g",$prob_stay),")\n"
-          if $debug;
+      # print "$self->{treeno} $do_insert PROB ", sprintf("%.3g",$prob_insert)," (INSERT ", sprintf("%.3g",$prob_insert)," STAY ",sprintf("%.3g",$prob_stay),")\n"
+          # if $debug;
 
-      if ($do_insert) {
+      # if do_insert is 0, that means we are not inserting; otherwise,
+      # it means we have selected nonterminal ($do_insert-1)
+      my $newlabel = random_multinomial(\@dist);
+      if ($newlabel) {
         $self->{insertions}++;
         # print "DOING INSERT\n";
 
         $tree->{numkids} = scalar @{$tree->{children}};
         $newnode->{numkids} = scalar @{$newnode->{children}};
 
-        map { $self->add($_) } ($new_rule,$new_rule2);
-        $self->{nts}->[$newnode->{label}]++;
+        map { $self->add($_) } (ruleof($tree),ruleof($newnode));
+        $self->{nts}->[$newlabel-1]++;
         $self->{totals}{nts}++;
 
       } else {
@@ -283,7 +289,7 @@ sub sample_each_insert {
         splice @{$tree->{children}}, $s, 1, @{$newnode->{children}};
 
         # restore the counts
-        map { $self->add($_) } $current_rule;
+        map { $self->add($_) } $oldrule;
       }
 
       # only try one span (keeping loop to make it easy to change this
@@ -445,6 +451,10 @@ sub sample_each_rename {
     # only try one child (kept in loop, though, in case we change this later)
     last;
   }
+}
+
+# do nothing!
+sub noop {
 }
 
 # adds counts of the given $rule
@@ -636,9 +646,11 @@ sub prob_ind {
   $lhs     =~ s/^\(//;
   $rhs[-1] =~ s/\)$//;
 
+  my $rank = scalar @rhs;
+
   my $weight = $self->prob_ruletype($lhs);
 
-  my $prob = 1.0;
+  my $prob = $self->{stop} * (1.0 - $self->{stop}) ** ($rank - 1);
   foreach my $rhs (@rhs) {
     if (islex($rhs)) {
       my $pt = $self->prob_terminal($lhs,$rhs);
