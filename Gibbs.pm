@@ -32,7 +32,7 @@ sub new {
   my $self = { 
     beta => {},
     iters => 100,
-    stop => 0.5,
+    stop => 0.9,
     rundir => $ENV{PWD},
     verbosity => 1,
     alphas => {
@@ -279,7 +279,15 @@ sub sample_each_insert {
         $newnode->{numkids} = scalar @{$newnode->{children}};
 
         map { $self->add($_) } (ruleof($tree),ruleof($newnode));
-        $self->{nts}->[$newlabel-1]++;
+
+        # a new nonterminal was sampled
+        if ($newlabel == $num_nts - 1) {
+          $self->{nts}->[$newlabel-1] = 1;
+          push(@{$self->{nts}}, 0);
+        } else {
+          $self->{nts}->[$newlabel-1]++;
+        }
+
         $self->{totals}{nts}++;
 
       } else {
@@ -340,17 +348,13 @@ sub sample_each_delete {
     $self->{totals}{nts}--;
     $self->subtract($kid_rule);
   
-    # print "DELETE PROB STAY ($current_rule, $kid_rule)\n";
-    my $prob_stay = $self->prob($current_rule) * $self->prob($kid_rule);
-    # print "DELETE PROB STAY = ", $prob_stay, $/;
-
     my $deleted_node = splice @{$tree->{children}}, $kidno, 1, @{$kid->{children}};
     my $new_rule = ruleof($tree);
+
     my $prob_delete = $self->prob($new_rule);
-    # print "DELETE PROB DELETE = ", $prob_delete, $/;
-    
-    my $delete_prob = ($prob_delete / ($prob_stay + $prob_delete));
-    my $do_delete = rand_transition($delete_prob);
+    my $prob_stay = $self->prob($current_rule) * $self->prob($kid_rule);
+
+    my $do_delete = (rand($prob_delete + $prob_stay) < $prob_delete) ? 1 : 0;
 
     if ($do_delete) {
       $self->{deletions}++;
@@ -524,7 +528,7 @@ sub prob {
 
   my $lhs = lhsof($rule);
 
-  my $count = (exists $self->{counts}->{$rule}) ? $self->{counts}->{$rule} : 0;
+  my $count = (exists $self->{rewrites}{$lhs}{$rule}) ? $self->{rewrites}{$lhs}{$rule} : 0;
   my $base_prob = prob_ind($self,$rule);
   my $total = $self->totals($lhs,"rewrites");
   my $alpha = $self->alphas("rewrites");
@@ -646,10 +650,9 @@ sub prob_ind {
   $lhs     =~ s/^\(//;
   $rhs[-1] =~ s/\)$//;
 
-  my $rank = scalar @rhs;
-
   my $weight = $self->prob_ruletype($lhs);
 
+  my $rank = scalar @rhs;
   my $prob = $self->{stop} * (1.0 - $self->{stop}) ** ($rank - 1);
   foreach my $rhs (@rhs) {
     if (islex($rhs)) {
@@ -714,17 +717,7 @@ sub dump_corpus {
 }
 
 sub dump_counts {
-  my ($self,$dir) = @_;
-  mkdir $dir unless -d $dir;
-
-  my $file = "$dir/counts";
-  open DUMP, ">$file" or warn "can't dump to $file";
-  while (my ($subtree,$count) = each %{$self->{counts}}) {
-    next unless $count > 0;
-    print DUMP "$count $subtree\n";
-  }
-  close DUMP;
-  compress_files($file);
+  print "dump_counts() not implemented!\n";
 }
 
 sub read_base_grammar {
