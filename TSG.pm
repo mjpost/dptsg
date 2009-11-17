@@ -5,7 +5,7 @@ use Exporter;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
-@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos count rep binarize_subtree binarize_grammar diffuse_rule_probs extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node|;
+@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
@@ -86,78 +86,25 @@ sub prune {
 
 sub ruleof {
   my ($node) = @_;
+
+  my $label = $node->{label};
+  $label =~ s/^\*//;
+
+  my $str;
   if (scalar @{$node->{children}}) {
-    return "($node->{label} " . join(" ", map { $_->{label} } @{$node->{children}}) . ")";
-  }
-  return "($node->{label})";
-}
-
-# return a hash representation of the subtree
-# - tree is the root of the tree to (recursively) process
-# - stop_child indicates a child that should be specially marked to facilitate
-#   later merging
-# - hash, if present, will be filled with further information used for
-#   computing the base measure
-sub rep {
-  my ($tree,$stop_child,$hash) = @_;
-  $stop_child = 0 unless $stop_child;
-  $hash = { top => $tree } unless defined $hash;
-
-  # update hash
-  push @{$hash->{rules}}, ruleof($tree);
-  $hash->{rulecount}++;
-  $hash->{numkids} += scalar @{$tree->{children}} || 1;
-  $hash->{numkids}-- unless 1 == $hash->{rulecount};
-
-  $hash->{str} .= " " if $hash->{str};
-
-  my $head;
-
-  if (scalar @{$tree->{children}}) {
-    $hash->{str} .= "(" . $tree->{label};
-
-    my $headpos = $tree->{hpos};
-    my @headwords;
-    my @headlabels = ( clean($tree->{label}) );
-    my @deps;
-    foreach my $kid (@{$tree->{children}}) {
-      if ($kid->{label} =~ /^\*/ && $kid != $stop_child) {
-        # merged node, keep going
-        rep($kid,$stop_child,$hash);
+    $str = "($label";
+    foreach my $kid (@{$node->{children}}) {
+      if ($kid->{label} =~ /^\*/) {
+        $str .= " " . ruleof($kid);
       } else {
-        # unmerged node, end here
-        $hash->{str} .= " " . $kid->{label};
-        $hash->{frontier} .= " " if $hash->{frontier};
-        $hash->{frontier} .= $kid->{label};
-      }
-
-      if (exists $hash->{head}) {
-        push @headwords,  $hash->{head};
-        push @headlabels, clean($kid->{label});
-        push @deps, $hash->{deps} if exists $hash->{deps};
-        delete $hash->{head};
-        delete $hash->{deps};
+        $str .= " " . $kid->{label};
       }
     }
-
-    if (@headwords) {
-      my $hpos = &head_pos(@headlabels);
-#       print "HEAD OF($tree->{label} -> ", join(" ", @headlabels), " = $hpos\n";
-      $hash->{head} = splice @headwords, $hpos, 1;
-      $hash->{deps} = (join ' ', @headwords,@deps) if @headwords or @deps;
-    }
-
-    $hash->{str} .= ")";
+    $str .= ")";
   } else {
-    $hash->{str} .= $tree->{label} . ")";
-    $hash->{frontier} .= " " if $hash->{frontier};
-    $hash->{frontier} .= $tree->{label};
+    $str .= $node->{label};
   }
-
-  # remove merged node markers
-  $hash->{str} =~ s/\*//g;
-
-  return $hash;
+  return $str;
 }
 
 sub read_lexicon {
@@ -165,14 +112,13 @@ sub read_lexicon {
   $LEXICON_THRESH = $thresh || 2;
   $LEXICON = {};
 
-  open LEX, $lex_file or die "can't read lexicon '$lex_file'";
+  open LEX, $lex_file or die "can't open vocabulary file '$lex_file'";
   while (my $line = <LEX>) {
     chomp $line;
     next if /^#/;
     my ($id,$word,$count) = split ' ', $line;
     $LEXICON->{$word} = $count;
   }
-
   return $LEXICON;
 }
 
@@ -356,187 +302,6 @@ sub escape {
   return $arg;
 }
 
-# binarizes a grammar using the greedy substring-matching binarization
-# approach
-sub binarize_grammar {
-  my ($rulesarg,$collapse) = @_;
-
-  my (%rules,%pmap,%notdone,%counts,%rulemap);
-
-  # 1. count all frontier pairs, and map them to the rule they appear in
-  while (my ($rule,$prob) = each %$rulesarg) {
-#     print "RULE($rule) $prob\n";
-    my ($lhs,@leaves) = split(' ',$rule);
-    my $leaves = join(" ",@leaves);
-    if (@leaves > 2) {
-      $notdone{$lhs}{$leaves} = $prob;
-      map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
-      $rulemap{"$lhs $leaves"} = "$lhs $leaves";
-    } else {
-      $rules{join($;,@leaves)}{$lhs} = $prob;
-    }
-  }
-
-  # 2. greedily reduce pairs until no more remain
-  foreach my $lhs (keys %counts) {
-
-    while (scalar keys %{$notdone{$lhs}}) {
-      # find the max pair in each rule, binarize that
-      my %postponed;
-      foreach my $leaves (keys %{$notdone{$lhs}}) {
-        my @leaves = split(' ',$leaves);
-        my $bestpair = undef;
-        my $bestcount = 0;
-        my $bestpos = -1;
-        for my $i (1..$#leaves) {
-          my $pair = "$leaves[$i-1] $leaves[$i]";
-          my ($l,$r) = ($leaves[$i-1],$leaves[$i]);
-#           my $label = "<$lhs:$l:$r>";
-#           my $label = "<$l:$r>";
-          my $label = ($collapse eq "lhs")
-              ? "<$lhs:$l:$r>"
-              : "<$l:$r>";
-          # only allow a particular binarization to occur once per rule
-          if ($counts{$lhs}{$l,$r} > $bestcount) { # && ! exists $pmap{"$lhs $leaves"}{"$label $l $r"}) {
-            $bestcount = $counts{$lhs}{$l,$r};
-            $bestpair = $pair;
-            $bestpos = $i;
-          }
-        }
-
-#         print "RULE($lhs $leaves)\n";
-#         print "  BEST($bestpos,$bestpair,$bestcount)\n";
-
-        # subtract all the counts
-        map { $postponed{$leaves[$_-1],$leaves[$_]}-- } (1..$#leaves);
-#          map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}-- } (1..$#leaves);
-
-        # make the replacement
-        my ($l,$r) = split(' ',$bestpair);
-#         my $label = "<$lhs:$l:$r>";
-#         my $label = "<$l:$r>";
-        my $label = ($collapse eq "lhs")
-            ? "<$lhs:$l:$r>"
-            : "<$l:$r>";
-
-        # create new rule, and adjust the list of binarized rules used
-        # by the top-level parent (which now has a new name)
-        $rules{$l,$r}{$label} = 1.0;  # record the rule
-        splice(@leaves,$bestpos-1,2,($label)); # insert binarized rule
-        my $newleaves = join(" ",@leaves); # new leaves string
-        $pmap{"$lhs $newleaves"} = $pmap{"$lhs $leaves"}; # rename parent
-        delete $pmap{"$lhs $leaves"}; # delete old parent
-        $pmap{"$lhs $newleaves"}{"$label $l $r"}++; # count new child
-        
-        # update the map between the original rule and its top-level
-        # binarized piece
-        if ($newleaves ne $leaves) {
-          $rulemap{"$lhs $newleaves"} = $rulemap{"$lhs $leaves"};
-          delete $rulemap{"$lhs $leaves"};
-        }
-
-        # increment the counts
-        map { $postponed{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
-#         map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
-
-        # update
-        my $prob = $notdone{$lhs}{$leaves};
-        delete $notdone{$lhs}{$leaves};
-        if (@leaves > 2) {
-          $notdone{$lhs}{join(" ",@leaves)} = $prob;
-        } elsif (@leaves == 2) {
-#           print "TOP($lhs -> $newleaves) = $prob\n";
-          $rules{join($;,@leaves)}{$lhs} = $prob;
-        }
-      }
-
-        # update counts if we're not done
-      if (scalar keys %{$notdone{$lhs}}) {
-        map { $counts{$lhs}{$_} += $postponed{$_} } keys %postponed;
-      }
-    }
-  }
-
-  # debugging
-#   while (my ($parent,$hash) = each %pmap) {
-#     print "PARENT RULE: $rulemap{$parent}\n";
-#     my ($lhs,@rhs) = split(' ',$parent);
-#     my $rhs = join($;,@rhs);
-#     my $prob = $rules{$rhs}{$lhs};
-#     print "  $parent ($prob)\n";
-#     while (my ($key,$prob) = each %{$pmap{$parent}}) {
-#       print "  $key ($prob)\n";
-#     }
-#   }
-
-  # convert the pmap (where a parent rule lists all of the binarized
-  # pieces it was turned into) into the binmap (in which each binary
-  # segment points to all of the parent rules it is part of)
-  my %binmap;
-  foreach my $rule (keys %pmap) {
-    # each binary rule points to its parent, and its value is the
-    # number of times it appears beneath that parent
-    map { $binmap{$_}{$rule} = $pmap{$rule}{$_} } keys %{$pmap{$rule}};
-#     map { $binmap{$_}{$rule} = 1.0 } keys %{$pmap{$rule}};
-  }
-
-  return (\%rules,\%binmap,\%rulemap);
-}
-
-# takes a binarized grammar and pushes the probability mass down as
-# far as possible
-sub diffuse_rule_probs {
-  my ($bin_map,$rules,$rulemap,$method) = @_;
-
-  # 1. sort the LHSs topologically
-  my @binrules = sort { bin_level($a) <=> bin_level($b) } keys %$bin_map;
-  
-  # 2. process each lhs
-  foreach my $binrule (@binrules) {
-#      print "BINRULE: '$binrule'\n";
-
-    # 2a. determine min prob of top-level rules sharing this bin piece
-    my ($lhs,@rhs) = split(' ',$binrule);
-    my @tops = keys %{$bin_map->{$binrule}};
-    my $shared_prob = 
-        max( map { my ($lhs,@rhs) = split ' ', $_;
-                   my $rhs = join($;,@rhs);
-                   my $numtimes = $bin_map->{$binrule}{$_}; # num times appears
-                   if ($method eq "nthroot" and defined $rulemap) {
-                     my $fullrule = $rulemap->{join(' ',$lhs,@rhs)};
-#                      print "FULLRULE($lhs @rhs) = $fullrule\n";
-                     my @nts = split(' ',$fullrule);
-                     my $n = @nts - 2;
-#                    print "  TOP($_) = $lhs -> $rhs ($rules->{$rhs}{$lhs})\n";
-                     $rules->{$rhs}{$lhs} ** (1.0/$numtimes/$n);
-                   } else {
-                     $rules->{$rhs}{$lhs} ** (1.0/$numtimes);
-                   }
-               }
-             @tops);
-#         max( map { my ($lhs,@rhs) = split ' ', $_;
-#                    my $rhs = join($;,@rhs);
-# #                    print "  TOP($_) = $lhs -> $rhs ($rules->{$rhs}{$lhs})\n";
-#                    $rules->{$rhs}{$lhs} } 
-#              @tops);
-
-#      print "NEW PROB($binrule) = $shared_prob\n";
-
-    # 2b. assign (some function of) this prob to the bin piece
-    my $rhs = join($;,@rhs);
-    $rules->{$rhs}{$lhs} = $shared_prob;
-
-    # 2c. divide out that prob from top-level rules sharing this bin piece
-    map { my ($lhs,@rhs) = split ' ', $_;
-          my $rhs = join($;,@rhs);
-          my $numtimes = $bin_map->{$binrule}{$_}; # num times appears
-#           print "  PARENT PROB($_) = $rules->{$rhs}{$lhs} / $shared_prob ** $numtimes";
-          $rules->{$rhs}{$lhs} /= ($shared_prob ** $numtimes);
-#           print " = $rules->{$rhs}{$lhs}\n";
-    } @tops;
-  }
-}
-
 sub extract_rules_subtree {
   my $node = shift;
   my $rules = shift;
@@ -663,9 +428,12 @@ sub walk_postorder {
   return $node;
 }
 sub walk_preorder {
-  my ($node,$funcs,$rest) = @_;
-  map { $_->($node,$rest) } @$funcs;
-  map { walk($_,$funcs,$rest) } @{$node->{children}};
+  my ($node,$funcs,$rest,@results) = @_;
+  # print "WALK($node->{label})\n";
+  my @newresults = map { $_->($node,$rest,@results) } @$funcs;
+  # print "RESULTS:\n";
+  # map { print "  $_\n" } @results;
+  map { walk_preorder($_,$funcs,$rest,@newresults) } @{$node->{children}};
   return $node;
 }
 sub walk {
@@ -715,13 +483,22 @@ sub is_preterminal {
 
 sub process_params {
   my ($PARAMS,$ARGV,$ENV) = @_;
+  my %binary;   # params (starred) that don't take args, default to 0
   foreach my $key (keys %$PARAMS) {
+    if ($key =~ /^\*/) {
+      $key =~ s/^\*//;
+      $binary{$key} = 1;
+    }
     if (exists $ENV->{$key}) {
       $PARAMS->{$key} = $ENV->{$key};
       print STDERR "* $key = $PARAMS->{$key} [env]\n";
     }
   }
-# process command-line arguments
+  # delete starred version of arguments (which are binary ones)
+  map { $PARAMS->{$_} = $PARAMS->{"*$_"};
+        delete $PARAMS->{"*$_"}; } keys %binary;
+
+  # process command-line arguments
   while (@$ARGV) {
     my $arg = shift @$ARGV;
 
@@ -730,7 +507,13 @@ sub process_params {
     $arg =~ s/^-//g;
 
     if (exists $PARAMS->{$arg}) {
-      $PARAMS->{$arg} = shift @$ARGV;
+      # binary arguments are true when present, only optionally take
+      # an argument (for backward compatibility)
+      if ($binary{$arg} and (! @$ARGV or $ARGV->[0] =~ /^-/)) {
+        $PARAMS->{$arg} = 1;
+      } else {
+        $PARAMS->{$arg} = shift @$ARGV;
+      }
       print STDERR "* $arg = $PARAMS->{$arg} [cmdline]\n";
     } else {
       die "no such option '$arg'";
