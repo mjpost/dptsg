@@ -20,11 +20,9 @@ my %PARAMS = (
 );
 process_params(\%PARAMS,\@ARGV,\%ENV);
 
-my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
-
 while (<>) {
   chomp;
-  walk(build_subtree($_,$lexicon),[\&print_leaves]);
+  walk(build_subtree($_),[\&print_leaves]);
   print $/;
 }
 
