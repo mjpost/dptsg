@@ -7,7 +7,7 @@ use vars qw|$VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS|;
 # our($lexicon,%rules,%deps,%PARAMS,$base_measure);
 
 @ISA = qw|Exporter|;
-@EXPORT = qw|compress_files decrement|;
+@EXPORT = qw|compress_files decrement random_multinomial|;
 @EXPORT_OK = ();
 
 use strict;
@@ -62,9 +62,6 @@ sub sample_all {
 
   $self->{iter} = $iter;
   $self->{treeno} = 1;
-  $self->{deletions} = 0;
-  $self->{insertions} = 0;
-  $self->{renamings} = 0;
 
   $| = 1;
   foreach my $tree (@{$self->{corpus}}) {
