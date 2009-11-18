@@ -83,7 +83,7 @@ sub decrement {
   my ($hash,$key) = @_;
   if (exists $hash->{$key}) {
     $hash->{$key}--;
-    delete $hash->{$key} unless ($hash->{key});
+    delete $hash->{$key} if (0 == $hash->{$key});
   }
 }
 
