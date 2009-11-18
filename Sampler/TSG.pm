@@ -50,6 +50,9 @@ sub count {
   $self->{totals} = {};
   $self->{rewrites} = {};
 
+  $self->{splits} = 0;
+  $self->{merges} = 0;
+
   my $count = sub {
     my ($node) = @_;
     my $lhs = $node->{label};

@@ -122,11 +122,13 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
 
   my $start_time = time;
   $sampler->sample_all($iter,\&sample_each_TSG);
+
 #   map { print "$counts{$_} '$_'\n" } (keys %counts);
   my $dur = time() - $start_time;
   my $nicedur = mytime($dur);
   mylog("Iteration $iter completed in $dur seconds ($nicedur)");
   print "ITERATION $iter took $dur seconds ($nicedur)\n";
+  print "ITERATION $iter splits:$sampler->{splits} merges:$sampler->{merges}\n";
 
 #   print "ITERATION stats ", (scalar keys %counts), " keys\n";
 #   my @newcorpus = map { build_tree_oneline($_) } @corpus;
