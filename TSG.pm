@@ -84,8 +84,10 @@ sub prune {
   $node;
 }
 
+# builds the rule (of arbitrary depth), but you can get the depth-one
+# rule with a second arg
 sub ruleof {
-  my ($node) = @_;
+  my ($node,$stop) = @_;
 
   my $label = $node->{label};
   $label =~ s/^\*//;
@@ -94,10 +96,12 @@ sub ruleof {
   if (scalar @{$node->{children}}) {
     $str = "($label";
     foreach my $kid (@{$node->{children}}) {
-      if ($kid->{label} =~ /^\*/) {
+      if (!$stop and $kid->{label} =~ /^\*/) {
         $str .= " " . ruleof($kid);
       } else {
-        $str .= " " . $kid->{label};
+        my $lab = $kid->{label};
+        $lab =~ s/^\*//;
+        $str .= " " . $lab;
       }
     }
     $str .= ")";
@@ -223,12 +227,12 @@ sub build_subtree {
       $top->{frontier} = join(' ', map { $_->{frontier} } @{$top->{children}});
       # compute the head position
       my $rhs = join(" ", map {$_->{label}} @{$top->{children}});
-      my $hpos = &head_pos(clean($top->{label}), map {clean($_->{label})} @{$top->{children}});
-      print "* WARNING: no head pos for rule '$top->{label} -> $rhs'\n" if (-1 == $hpos);
+      # my $hpos = &head_pos(clean($top->{label}), map {clean($_->{label})} @{$top->{children}});
+      # print "* WARNING: no head pos for rule '$top->{label} -> $rhs'\n" if (-1 == $hpos);
 #       print "HPOS($top->{label} -> ", (join " ", map {$_->{label}} @{$top->{children}}), ") = $hpos\n";
-      $top->{hpos} = $hpos;
-      $top->{head} = @{$top->{children}}[$hpos]->{head};
-      $top->{headtag} = @{$top->{children}}[$hpos]->{headtag};
+      # $top->{hpos} = $hpos;
+      # $top->{head} = @{$top->{children}}[$hpos]->{head};
+      # $top->{headtag} = @{$top->{children}}[$hpos]->{headtag};
 
       #compute the depth
       $top->{depth} = 1 + max(map { $_->{depth} } @{$top->{children}});
@@ -240,14 +244,14 @@ sub build_subtree {
       $c->{numkids} = 0;
       $c->{frontier} = $token;
       $c->{depth} = 0;
-      $c->{head} = $lexicon ? lex(signature($token)) : $token;
+      # $c->{head} = $lexicon ? lex(signature($token)) : $token;
 
       # add oneself to one's parent's list of children
 
       push(@{$c[-1]->{children}}, $c); # unless $#c < 0;
       # set the parent's depth
       $c[-1]->{depth} = 1;
-      $c[-1]->{headtag} = $c[-1]->{label};
+      # $c[-1]->{headtag} = $c[-1]->{label};
 
 #      push @c, $c;
 #      $c = pop @c;
