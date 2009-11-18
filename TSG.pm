@@ -315,7 +315,7 @@ sub extract_rules_subtree {
 
   # build the rule
   # record the rule representation
-  my $rule = "$node->{label} -> " . (join " ", map {$_->{label}} @{$node->{children}});
+  my $rule = "($node->{label} " . (join " ", map {$_->{label}} @{$node->{children}}) . ")";
   push @$rules, $rule;
 #   print "EXTRACT: $rule\n";
   
