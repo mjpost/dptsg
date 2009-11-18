@@ -88,18 +88,23 @@ sub sample_each_TSG {
     $outside_str = ruleof($topnode);
     $inside_str = ruleof($node);
 
+    # print "MINUS($merged_str)\n";
+
     decrement($self->{rewrites}{lhsof($merged_str)},$merged_str);
-    decrement($self->{totals},lhsof($merged_str));
+    # decrement($self->{totals},lhsof($merged_str));
   } else {
     $outside_str = ruleof($topnode);
     $inside_str = ruleof($node);
     $node->{label} = '*' . $node->{label};
     $merged_str = ruleof($topnode);
 
+    # print "MINUS($outside_str)\n";
+    # print "MINUS($inside_str)\n";
+
     decrement($self->{rewrites}{lhsof($inside_str)},$inside_str);
     decrement($self->{rewrites}{lhsof($outside_str)},$outside_str);
     decrement($self->{totals},lhsof($inside_str));
-    decrement($self->{totals},lhsof($outside_str));
+    # decrement($self->{totals},lhsof($outside_str));
   }
 
   # compute the three items with a combination of merging and removing
@@ -118,7 +123,6 @@ sub sample_each_TSG {
   my $prob_merged = $self->prob($merged_str);
   my $prob_inside = $self->prob($inside_str);
   my $prob_outside = $self->prob($outside_str);
-  my $denom = $prob_merged + $prob_inside * $prob_outside;
 
   # if ($denom <= 0) {
   #   print "\n--\nCONSIDERING NODE: $tree->{label} -> ", (join " ", (map { $_->{label} } @{$tree->{children}})), $/;
@@ -130,8 +134,6 @@ sub sample_each_TSG {
   #   print "  MERGED: $merged->{str} ($merged->{rulecount} rules) (", $self->prob($merged,1), ")\n";
   # }
 
-  my $merge_prob = $denom ? ($prob_merged / $denom) : 0;
-
   # transition with that possibility
   my $do_merge = rand($prob_merged + $prob_inside * $prob_outside) < $prob_merged;
 
@@ -141,7 +143,7 @@ sub sample_each_TSG {
 #   print "  - $inside_str ($prob_inside)\n";
 
 #   print "merged to get: '$merged->{str}' [$merge_prob] ";
-  print "CHOSE $merged_str ($merge_prob)\n" if $do_merge and $debug;
+  # print "CHOSE $merged_str ($merge_prob)\n" if $do_merge and $debug;
 #   print $/;
 
   # if ($self->{log}) {
@@ -150,33 +152,35 @@ sub sample_each_TSG {
   # }
 
   if ($do_merge) {
-#     print "  ADDING MERGED $merged_str\n";
+    # print " PLUS($merged_str)\n";
+
     my $lhs = lhsof($merged_str);
     $self->{rewrites}{$lhs}{$merged_str}++;
-    $self->{totals}{$lhs}++;
+    # $self->{totals}{$lhs}++;
     # we need to add the asterisk, which not there now if it was there before
     $node->{label} = "*" . $node->{label} if $was_merged;
   } else {
     my $olhs = lhsof($outside_str);
     my $ilhs = lhsof($inside_str);
 
-    # print "  ADDING OUTSIDE $outside_str ($olhs)\n";
-    # print "  ADDING INSIDE $inside_str ($ilhs)\n";
+    # print " PLUS($outside_str)\n";
+    # print " PLUS($inside_str)\n";
 
     $self->{rewrites}{$olhs}{$outside_str}++;
     $self->{rewrites}{$ilhs}{$inside_str}++;
-    $self->{totals}{$olhs}++;
+    # $self->{totals}{$olhs}++;
     $self->{totals}{$ilhs}++;
     # we need to clear the asterisk, which is there now if it wasn't
     # there before
     $node->{label} =~ s/^\*// unless $was_merged;
   }
   
+  # print "--\n";
+
   # If we merged (or stayed merged), the same topnode will continue to
   # be the topnode.  If we are not merged, then the current node is
   # the root of (potential) trees below it
-  return $topnode if ($do_merge);
-  return $node;
+  return ($do_merge) ? $topnode : $node;
 }
 
 sub prob {
@@ -244,6 +248,22 @@ sub base_prob {
   }
 
   return $pr * $prg;
+}
+
+sub dump_counts {
+  my ($self,$dir) = @_;
+  mkdir $dir unless -d $dir;
+
+  my $file = "$dir/counts";
+  open DUMP, ">$file" or warn "can't dump to $file";
+  while (my ($lhs,$hash) = each %{$self->{rewrites}}) {
+    while (my ($subtree,$count) = each %$hash) {
+      next unless $count > 0;
+      print DUMP "$count $subtree\n";
+    }
+  }
+  close DUMP;
+  compress_files($file);
 }
 
 1;
