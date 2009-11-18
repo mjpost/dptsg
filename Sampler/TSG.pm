@@ -126,35 +126,18 @@ sub sample_each_TSG {
     print "MERGED: $merged_str\n";
   }
 
-  # # set counts of lhs to 0 (if not set) to prevent later "undefined" notices
-  # map { $self->{size}->{lhsof($_)} = 0 unless exists $self->{size}->{lhsof($_)} } ($outside_str, $inside_str, $merged_str);
-
   # compute relative probability of merged vs. inside + outside
   my $prob_inside = $self->prob($inside);
   my $prob_outside = $self->prob($outside);
   my $prob_merged = $self->prob($merged);
 
-  # if ($denom <= 0) {
-  #   print "\n--\nCONSIDERING NODE: $tree->{label} -> ", (join " ", (map { $_->{label} } @{$tree->{children}})), $/;
-
-  #   print "-- FAIL REPORT\n";
-  #   print "  was_merged = $was_merged\n";
-  #   print "  OUTSIDE: $outside->{str} ($outside->{rulecount} rules) (", $self->prob($outside,1), ")\n";
-  #   print "  INSIDE:  $inside->{str} ($inside->{rulecount} rules) (", $self->prob($inside,1), ")\n";
-  #   print "  MERGED: $merged->{str} ($merged->{rulecount} rules) (", $self->prob($merged,1), ")\n";
-  # }
-
   # transition with that possibility
-  my $do_merge = rand($prob_merged + $prob_inside * $prob_outside) < $prob_merged;
+  my $do_merge = (rand($prob_merged + $prob_inside * $prob_outside) < $prob_merged) ? 1 : 0;
 
-#   print "MERGE $merge_prob (merging=$merging)\n";
-#   print "  - $merged_str ($prob_merged)\n";
-#   print "  - $outside_str ($prob_outside)\n";
-#   print "  - $inside_str ($prob_inside)\n";
-
-#   print "merged to get: '$merged->{str}' [$merge_prob] ";
-  # print "CHOSE $merged_str ($merge_prob)\n" if $do_merge and $debug;
-#   print $/;
+  # print "MERGE $outside_str $inside_str (was=$was_merged is=$do_merge)\n";
+  # print "  - $merged_str ($prob_merged)\n";
+  # print "  - $outside_str ($prob_outside)\n";
+  # print "  - $inside_str ($prob_inside)\n";
 
   # if ($self->{log}) {
   #   my $fh = $self->{log};
@@ -163,12 +146,12 @@ sub sample_each_TSG {
 
   if ($do_merge) {
     $self->{merges}++ unless $was_merged;
-    # print " PLUS($merged_str)\n";
 
     my $lhs = lhsof($merged_str);
     $self->{rewrites}{$lhs}{$merged_str}++;
-    # $self->{totals}{$lhs}++;
-    # we need to add the asterisk, which not there now if it was there before
+    # we need to make sure the current node is annotated with an
+    # asterisk (indicating it's an internal node), and the asterisk is
+    # not there if it was there before
     $node->{label} = "*" . $node->{label} if $was_merged;
   } else {
     $self->{splits}++ if $was_merged;
@@ -176,20 +159,15 @@ sub sample_each_TSG {
     my $olhs = lhsof($outside_str);
     my $ilhs = lhsof($inside_str);
 
-    # print " PLUS($outside_str)\n";
-    # print " PLUS($inside_str)\n";
-
     $self->{rewrites}{$olhs}{$outside_str}++;
     $self->{rewrites}{$ilhs}{$inside_str}++;
-    # $self->{totals}{$olhs}++;
     $self->{totals}{$ilhs}++;
+
     # we need to clear the asterisk, which is there now if it wasn't
     # there before
     $node->{label} =~ s/^\*// unless $was_merged;
   }
   
-  # print "--\n";
-
   # If we merged (or stayed merged), the same topnode will continue to
   # be the topnode.  If we are not merged, then the current node is
   # the root of (potential) trees below it
