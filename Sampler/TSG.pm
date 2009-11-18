@@ -73,7 +73,7 @@ my $loghandle;
 sub sample_each_TSG {
   my ($node,$self,$topnode) = @_;
 
-  return $node if $node->{label} eq "TOP";
+  return ruleof($node,1) if $node->{label} eq "TOP";
   return $node unless @{$node->{children}};
 
   # print "SAMPLE_EACH_TSG($node->{label},$topnode->{label})\n";
@@ -123,9 +123,11 @@ sub sample_each_TSG {
   # map { $self->{size}->{lhsof($_)} = 0 unless exists $self->{size}->{lhsof($_)} } ($outside_str, $inside_str, $merged_str);
 
   # compute relative probability of merged vs. inside + outside
-  my $prob_merged = $self->prob($merged_str);
-  my $prob_inside = $self->prob($inside_str);
-  my $prob_outside = $self->prob($outside_str);
+  my @base_probs = $self->efficient_base_probs($inside_str,$outside_str);
+
+  my $prob_inside = $self->prob($inside_str,$base_probs[1]);
+  my $prob_outside = $self->prob($outside_str,$base_probs[2]);
+  my $prob_merged = $self->prob($merged_str,$base_probs[0]);
 
   # if ($denom <= 0) {
   #   print "\n--\nCONSIDERING NODE: $tree->{label} -> ", (join " ", (map { $_->{label} } @{$tree->{children}})), $/;
@@ -155,6 +157,7 @@ sub sample_each_TSG {
   # }
 
   if ($do_merge) {
+    $self->{merges}++ unless $was_merged;
     # print " PLUS($merged_str)\n";
 
     my $lhs = lhsof($merged_str);
@@ -163,6 +166,8 @@ sub sample_each_TSG {
     # we need to add the asterisk, which not there now if it was there before
     $node->{label} = "*" . $node->{label} if $was_merged;
   } else {
+    $self->{splits}++ if $was_merged;
+
     my $olhs = lhsof($outside_str);
     my $ilhs = lhsof($inside_str);
 
@@ -187,10 +192,9 @@ sub sample_each_TSG {
 }
 
 sub prob {
-  my ($self,$rule,$verb) = @_;
+  my ($self,$rule,$base) = @_;
 
-  my $subtree = build_subtree($rule);
-  my $lhs = $subtree->{label};
+  my $lhs = lhsof($rule);
 
   my $count = (exists $self->{rewrites}{$rule}) 
       ? $self->{rewrites}{$rule} : 0;
@@ -198,7 +202,11 @@ sub prob {
   my $total = (exists $self->{totals}{$lhs})
       ? $self->{totals}{$lhs} : 0;
 
-  my $num = $count + $self->{alpha} * $self->base_prob($self,$subtree);
+  my ($num);
+  if (! defined $base) {
+    $base = $self->base_prob(build_subtree($rule));
+  }
+  my $num = $count + $self->{alpha} * $base;
   my $denom = $total + $self->{alpha};
   
   # print "UNDEF($lhs) TOTALS\n" unless defined $self->{totals}->{$lhs};
@@ -220,25 +228,69 @@ sub prob {
   return $prob;
 }
 
+sub efficient_base_probs {
+  my ($self,$istr,$ostr) = @_;
+
+  my $pr = 1.0;
+  my $numrules = 0;
+  my $find_rules = sub {
+    my ($node) = @_;
+    if (@{$node->{children}}) {
+      my $rule = "($node->{label} " . (join " ", map {$_->{label}} @{$node->{children}}) . ")";
+      $pr *= $self->{rules}->{$rule};
+      $numrules++;
+    }
+  };
+
+  my $inside  = build_subtree($istr);
+  walk($inside,[$find_rules]);
+  my $ipr = $pr;
+  my $inumrules = $numrules;
+
+  $pr = 1.0;
+  $numrules = 0;
+  my $outside = build_subtree($ostr);
+  walk($outside,[$find_rules]);
+  my $opr = $pr;
+  my $onumrules = $numrules;
+
+  my $mpr = $ipr * $opr * ((1.0 - $self->{stop}) ** ($inumrules + $onumrules - 1)) * $self->{stop}; 
+  $ipr *= ((1.0 - $self->{stop}) ** ($inumrules - 1)) * $self->{stop};  
+  $opr *= ((1.0 - $self->{stop}) ** ($onumrules - 1)) * $self->{stop};  
+
+  return ($ipr,$opr,$mpr);
+}
+
 # returns the base measure probability of the tree fragment
 # memoize('base_prob');
 sub base_prob {
   my ($self,$subtree,$verb) = @_;
 
   my $pr = 1.0;
+  my $numrules = 0;
 #   print "BASE_PROB: ", (scalar @{$rep->{rules}}), " rules:\n"
 #       if $debug;
 
-  my @rules;
-  extract_rules_subtree($subtree,\@rules);
-  my $numrules = scalar @rules;
+  my $find_rules = sub {
+    my ($node) = @_;
+    if (@{$node->{children}}) {
+      my $rule = "($node->{label} " . (join " ", map {$_->{label}} @{$node->{children}}) . ")";
+      $pr *= $self->{rules}->{$rule};
+      $numrules++;
+    }
+  };
+  walk($subtree,[$find_rules]);
 
-  foreach my $rule (@rules) {
-    print " PROB($rule) = $self->{rules}->{$rule}\n"
-        if $debug;
-    print "* WARNING: couldn't find rule '$rule' in PCFG rules\n" unless exists $self->{rules}->{$rule};
-    $pr *= $self->{rules}->{$rule};
-  }
+  # my @rules;
+  # extract_rules_subtree($subtree,\@rules);
+  # my $numrules = scalar @rules;
+
+  # foreach my $rule (@rules) {
+  #   print " PROB($rule) = $self->{rules}->{$rule}\n"
+  #       if $debug;
+  #   print "* WARNING: couldn't find rule '$rule' in PCFG rules\n" unless exists $self->{rules}->{$rule};
+  #   $pr *= $self->{rules}->{$rule};
+  # }
 #   print "PR is $pr after multiplying together $rep->{rulecount} rules\n";
 
   my $prg = ((1.0 - $self->{stop}) ** ($numrules - 1)) * $self->{stop};
@@ -268,6 +320,47 @@ sub dump_counts {
   close DUMP;
   compress_files($file);
 }
+
+sub rep {
+  my ($node,$stop_child,$hash) = @_;
+  $hash = { top => $node } unless defined $hash;
+
+  # update hash
+  push @{$hash->{rules}}, ruleof($node,1);
+  $hash->{rulecount}++;
+  $hash->{numkids} += scalar @{$tree->{children}} || 1;
+  $hash->{numkids}-- unless 1 == $hash->{rulecount};
+
+  $hash->{str} .= " " if $hash->{str};
+  $hash->{str} .= "(" . $tree->{label};
+
+  my $head;
+
+  if (scalar @{$tree->{children}}) {
+    foreach my $kid (@{$tree->{children}}) {
+      if ($kid->{label} =~ /^\*/ && $kid != $stop_child) {
+        # merged node, keep going
+        rep($kid,$stop_child,$hash);
+      } else {
+        # unmerged node, end here
+        $hash->{str} .= " " . $kid->{label};
+        $hash->{frontier} .= " " if $hash->{frontier};
+        $hash->{frontier} .= $kid->{label};
+      }
+    }
+  } else {
+    $hash->{str} .= " " . $tree->{head};
+    $hash->{frontier} .= " " if $hash->{frontier};
+    $hash->{frontier} .= $tree->{head};
+  }
+
+  $hash->{str} .= ")";
+  # remove merged node markers
+  $hash->{str} =~ s/\*//g;
+
+  return $hash;
+}
+
 
 1;
 
