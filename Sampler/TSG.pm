@@ -27,14 +27,26 @@ BEGIN {
 
 use TSG;
 
+my (%rewrites,%totals);
+
 sub new {
-  my ($class,@rest) = @_;
+  my ($class,@params) = @_;
 
-  my $self = $class->SUPER::new(@rest);
+  # defaults
+  my %defaults = (
+    alpha => 100,
+  );
 
-  $self->{alpha} = 1;        # default alpha
-  $self->{totals} = {};
-  $self->{rewrites} = {};   # counts of lhs -> {N U T}* (a string of terms and nts)
+  # assign defaults
+  my %params = @params;
+  map { $params{$_} = $defaults{$_} unless exists $params{$_} } (keys %params);
+
+  # call parent
+  my $self = $class->SUPER::new(%params);
+
+  # create other variables
+  # $self->{totals} = {};
+  # $self->{rewrites} = {};   # counts of lhs -> {N U T}* (a string of terms and nts)
 
   bless($self,$class);
 
@@ -47,8 +59,10 @@ sub count {
   my ($self) = @_;
   my $corpus = $self->{corpus};
 
-  $self->{totals} = {};
-  $self->{rewrites} = {};
+  # $self->{totals} = {};
+  # $self->{rewrites} = {};
+  %totals = ();
+  %rewrites = ();
 
   $self->{splits} = 0;
   $self->{merges} = 0;
@@ -58,8 +72,10 @@ sub count {
     my $lhs = $node->{label};
     if (@{$node->{children}} && $lhs !~ /^\*/) {
       my $rule = ruleof($node);
-      $self->{rewrites}{$lhs}{$rule}++;
-      $self->{totals}{$lhs}++;
+      $rewrites{$rule}++;
+      $totals{$lhs}++;
+      # $self->{rewrites}{$rule}++;
+      # $self->{totals}{$lhs}++;
     }
   };
 
@@ -69,6 +85,25 @@ sub count {
 
 my $debug = 0;
 my $loghandle;
+
+# sub sample_all {
+#   my ($self,$iter,@funcs) = @_;
+
+#   $self->{iter} = $iter;
+#   $self->{treeno} = 1;
+
+#   $| = 1;
+#   foreach my $tree (@{$self->{corpus}}) {
+#     print "ITER $iter TREE $self->{treeno} merges:$self->{merges} splits:$self->{splits} \n" 
+#         if $self->{verbosity} and (! ($self->{treeno} % 1000));
+
+#     map {
+#       $self->sample_each_TSG_recurse($_,$tree);
+#     } @{$tree->{children}};
+
+#     $self->{treeno}++;
+#   }
+# }
 
 sub sample_each_TSG {
   my ($node,$self,$topnode) = @_;
@@ -84,8 +119,6 @@ sub sample_each_TSG {
 
   my ($outside,$inside,$merged);
 
-  my $current_rule = ruleof($node,1);
-
   # is merged
   my $was_merged = ($node->{label} =~ /^\*/) ? 1 : 0;
   if ($was_merged) {
@@ -96,7 +129,9 @@ sub sample_each_TSG {
 
     # print "MINUS($merged_str)\n";
 
-    decrement($self->{rewrites}{$topnode->{label}},$merged->{str});
+    # decrement($self->{rewrites},$merged->{str});
+    decrement(\%rewrites,$merged->{str});
+
     # decrement($self->{totals},lhsof($merged_str));
   } else {
     $outside = rep($topnode);
@@ -107,9 +142,13 @@ sub sample_each_TSG {
     # print "MINUS($outside_str)\n";
     # print "MINUS($inside_str)\n";
 
-    decrement($self->{rewrites}{$node->{label}},$inside->{str});
-    decrement($self->{rewrites}{$topnode->{label}},$outside->{str});
-    decrement($self->{totals},$node->{label});
+    # decrement($self->{rewrites},$inside->{str});
+    # decrement($self->{rewrites},$outside->{str});
+    # decrement($self->{totals},$node->{label});
+    decrement(\%rewrites,$inside->{str});
+    decrement(\%rewrites,$outside->{str});
+    decrement(\%totals,$node->{label});
+
     # decrement($self->{totals},lhsof($outside_str));
   }
 
@@ -148,7 +187,9 @@ sub sample_each_TSG {
     $self->{merges}++ unless $was_merged;
 
     my $lhs = lhsof($merged_str);
-    $self->{rewrites}{$lhs}{$merged_str}++;
+    # $self->{rewrites}{$merged_str}++;
+    $rewrites{$merged_str}++;
+
     # we need to make sure the current node is annotated with an
     # asterisk (indicating it's an internal node), and the asterisk is
     # not there if it was there before
@@ -159,9 +200,12 @@ sub sample_each_TSG {
     my $olhs = lhsof($outside_str);
     my $ilhs = lhsof($inside_str);
 
-    $self->{rewrites}{$olhs}{$outside_str}++;
-    $self->{rewrites}{$ilhs}{$inside_str}++;
-    $self->{totals}{$ilhs}++;
+    # $self->{rewrites}{$outside_str}++;
+    # $self->{rewrites}{$inside_str}++;
+    # $self->{totals}{$ilhs}++;
+    $rewrites{$outside_str}++;
+    $rewrites{$inside_str}++;
+    $totals{$ilhs}++;
 
     # we need to clear the asterisk, which is there now if it wasn't
     # there before
@@ -177,16 +221,20 @@ sub sample_each_TSG {
 sub prob {
   my ($self,$rep) = @_;
 
-  my $lhs = $rep->{top}->{label};
+  my $lhs = $rep->{label};
   my $rule = $rep->{str};
 
   # print "PROB($rule)\n";
 
-  my $count = (exists $self->{rewrites}{$rule}) 
-      ? $self->{rewrites}{$rule} : 0;
+  # my $count = (exists $self->{rewrites}{$rule}) 
+  #     ? $self->{rewrites}{$rule} : 0;
+  my $count = (exists $rewrites{$rule}) 
+      ? $rewrites{$rule} : 0;
 
-  my $total = (exists $self->{totals}{$lhs})
-      ? $self->{totals}{$lhs} : 0;
+  # my $total = (exists $self->{totals}{$lhs})
+  #     ? $self->{totals}{$lhs} : 0;
+  my $total = (exists $totals{$lhs})
+      ? $totals{$lhs} : 0;
 
   my $base = $self->base_prob($rep);
   my $num = $count + $self->{alpha} * $base;
@@ -195,18 +243,19 @@ sub prob {
   # print "UNDEF($lhs) TOTALS\n" unless defined $self->{totals}->{$lhs};
   # print "UNDEF($rule,$lhs) ALPHA\n" unless defined $self->{alpha};
 
-  # if ($verb) {
-  #   print "PROB($rule)\n";
-  #   print "  counts = $count\n";
-  #   print "  alpha = $self->{alpha}\n";
-  #   print "  base_prob = ", $self->base_prob($self,$subtree), $/;
-  #   print "  size = $self->{totals}->{$lhs}\n";
-  #   print "  ", $self->base_prob($self,$subtree), $/;
-  #   print "  NUM = $num\n";
-  #   print "  DEN = $denom\n";
-  # }
-
   my $prob = $num / $denom;
+
+  if ($self->{verbosity} >= 3) {
+    print "PROB($rule) = $prob\n";
+    print "  lhs = $lhs\n";
+    print "  counts = $count\n";
+    print "  alpha = $self->{alpha}\n";
+    print "  base_prob = $base\n";
+    print "  size = $total\n";
+    print "  NUM = $num\n";
+    print "  DEN = $denom\n";
+  }
+
 
   return $prob;
 }
@@ -273,11 +322,10 @@ sub dump_counts {
 
   my $file = "$dir/counts";
   open DUMP, ">$file" or warn "can't dump to $file";
-  while (my ($lhs,$hash) = each %{$self->{rewrites}}) {
-    while (my ($subtree,$count) = each %$hash) {
-      next unless $count > 0;
-      print DUMP "$count $subtree\n";
-    }
+  # while (my ($subtree,$count) = each %{$self->{rewrites}}) {
+  while (my ($subtree,$count) = each %rewrites) {
+    next unless $count > 0;
+    print DUMP "$count $subtree\n";
   }
   close DUMP;
   compress_files($file);
@@ -287,7 +335,7 @@ sub dump_counts {
 # rooted at that node
 sub rep {
   my ($node,$hash) = @_;
-  $hash = { top => $node } unless defined $hash;
+  $hash = { label => $node->{label} } unless defined $hash;
 
   # update hash
   push @{$hash->{rules}}, ruleof($node,1);
