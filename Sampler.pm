@@ -66,7 +66,7 @@ sub sample_all {
   $| = 1;
   foreach my $tree (@{$self->{corpus}}) {
     print "ITER $iter TREE $self->{treeno}\n" 
-        if $self->{verbosity} and (! ($self->{treeno} % 100));
+        if $self->{verbosity} and (! ($self->{treeno} % 1000));
 
     walk($tree, \@funcs, $self);
 

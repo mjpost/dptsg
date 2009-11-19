@@ -28,10 +28,10 @@ my %PARAMS = (
   log => 0,
   lexicon => "$basedir/data/lex.02-21",
   pcfg => "$basedir/data/pcfg_rules.prb",
-  headed_rule => 0.9, 
   thresh => 2,
   corpus => "$basedir/data/wsj.trees.02-21.clean",
   rundir => $ENV{PWD},
+  '*startover' => 0,
   srand => undef,
   verbosity => 1 );
 
@@ -71,7 +71,8 @@ $PARAMS{rules} = \%rules;
 
 my $iter = 1;
 $iter++ while -d $iter;
-if ($iter == 1) {
+if ($iter == 1 || $PARAMS{startover}) {
+  $iter = 1;
   print STDERR "Initializing counts with first pass over $PARAMS{corpus}.\...";
   my $sentno = 0;
   open CORPUS, $PARAMS{corpus} or die "can't open corpus '$PARAMS{corpus}'";
@@ -81,6 +82,7 @@ if ($iter == 1) {
     $sentno++;
 
     my $tree = build_subtree($line,$lexicon);
+
     push @corpus, $tree;
   }
   close CORPUS;
