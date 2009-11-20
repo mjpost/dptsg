@@ -1,0 +1,12 @@
+* Process the trees into a nice format, build lexicon.
+
+ You need a copy of the WSJ portion of the Penn treebank.
+
+ Gets rid of treebank2 info, removes NONE nodes and traces.
+
+ $ cd $basedir
+ $ mkdir data
+ $ (cd /p/mt/corpora/wsj; cat {00,01,02,03,04,05,06,07,08,09,10,11,12,13,14,15,16,17,18,19,20,21}/*mrg) | \
+    ./scripts/oneline_treebank.pl > data/wsj.trees.00-21
+ $ ./scripts/build_lex.pl data/wsj.trees.00-21 > data/lex.00-21
+ $ cat data/wsj.trees.00-21 | ./scripts/clean.pl > data/wsj.trees.00-21.clean
