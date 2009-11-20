@@ -90,7 +90,7 @@ sub rand_transition {
 }
 
 sub compress_files {
-  map { system("bzip2 -9 $_") } @_;
+  map { system("/usr/bin/bzip2 -9 $_") } @_;
 }
 
 sub dump_corpus {

@@ -128,9 +128,8 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
 #   map { print "$counts{$_} '$_'\n" } (keys %counts);
   my $dur = time() - $start_time;
   my $nicedur = mytime($dur);
-  mylog("Iteration $iter completed in $dur seconds ($nicedur)");
-  print "ITERATION $iter took $dur seconds ($nicedur)\n";
-  print "ITERATION $iter splits:$sampler->{splits} merges:$sampler->{merges}\n";
+  mylog("ITERATION $iter took $dur seconds ($nicedur)",1);
+  mylog("ITERATION $iter splits:$sampler->{splits} merges:$sampler->{merges}",1);
 
 #   print "ITERATION stats ", (scalar keys %counts), " keys\n";
 #   my @newcorpus = map { build_tree_oneline($_) } @corpus;
@@ -143,10 +142,12 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
 }
 
 sub mylog {
-  my ($msg) = @_;
+  my ($msg,$stdout) = @_;
 
   my $fh = loghandle();
   print $fh "$msg\n";
+  print $msg, $/
+      if $stdout;
 }
 
 sub loghandle() {
