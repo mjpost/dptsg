@@ -69,6 +69,8 @@ print STDERR "done.\n";
 
 $PARAMS{rules} = \%rules;
 
+my $PICKING_UP = 0;
+
 my $iter = 1;
 $iter++ while -d $iter;
 if ($iter == 1 || $PARAMS{startover}) {
@@ -89,6 +91,7 @@ if ($iter == 1 || $PARAMS{startover}) {
   print STDERR "done.\n";
 } else {
   $iter--;
+  $PICKING_UP = 1;
   print STDERR "Picking up where we left off (iteration $iter)...";
   my $corpus = "$iter/corpus";
   if (! -e $corpus and -e "${corpus}.bz2") {
@@ -152,7 +155,11 @@ sub mylog {
 
 sub loghandle() {
   if (! defined $loghandle) {
-    open $loghandle, ">out.log" or die "can't open logfile";
+    if ($PICKING_UP) {
+      open $loghandle, ">>out.log" or die "can't open logfile";
+    } else {
+      open $loghandle, ">out.log" or die "can't open logfile";
+    }
   }
 
   return $loghandle;
