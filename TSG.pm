@@ -5,7 +5,7 @@ use Exporter;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
-@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node|;
+@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
@@ -531,6 +531,12 @@ sub clean {
   $label =~ s/^\*//;
 
   return $label;
+}
+
+# adds a field in each child denoting its parent
+sub mark_parent {
+  my ($node) = @_;
+  map { $_->{parent} = $node } @{$node->{children}};
 }
 
 1;
