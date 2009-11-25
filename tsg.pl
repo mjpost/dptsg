@@ -70,6 +70,8 @@ print STDERR "done.\n";
 $PARAMS{rules} = \%rules;
 
 my $PICKING_UP = 0;
+my $bzip = "/usr/bin/bzip2";
+$bzip = "$ENV{HOME}/bzip2" unless -e $bzip;
 
 my $iter = 1;
 $iter++ while -d $iter;
@@ -96,7 +98,7 @@ if ($iter == 1 || $PARAMS{startover}) {
   my $corpus = "$iter/corpus";
   if (! -e $corpus and -e "${corpus}.bz2") {
     print "decompressing compressed corpus file ${corpus}.bz2\n";
-    system("bzip2 -d ${corpus}.bz2");
+    system("$bzip -d ${corpus}.bz2");
   }
   open CORPUS, $corpus or die "can't open corpus '$corpus'";
   while (my $line = <CORPUS>) {
