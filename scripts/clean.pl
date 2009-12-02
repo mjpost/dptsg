@@ -15,7 +15,7 @@ use TSG;
 
 my %PARAMS = (
   lexicon => "$basedir/data/lex.02-21",
-  thresh => 2,
+  thresh => 1,
 );
 process_params(\%PARAMS,\@ARGV,\%ENV);
 my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
@@ -23,7 +23,12 @@ my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
 while (my $line = <>) {
   chomp $line;
 
-  my $subtree = prune(build_subtree($line,$lexicon));
+  # build subtree
+  my $subtree = build_subtree($line);
+  # remove annotations
   walk($subtree,[\&scrub_node]);
+  # prune nodes
+  prune($subtree);
+  # output
   print build_subtree_oneline($subtree,1), $/;
 }
