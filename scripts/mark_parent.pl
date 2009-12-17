@@ -14,7 +14,7 @@ use TSG;
 
 my %PARAMS = (
   lexicon => "$basedir/data/lex.02-21",
-  thresh => 1,
+  thresh => 0,
 );
 # process paramters and read in lexicon
 process_params(\%PARAMS,\@ARGV,\%ENV);
