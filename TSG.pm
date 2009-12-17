@@ -119,7 +119,7 @@ sub ruleof {
 
 sub read_lexicon {
   my ($lex_file,$thresh) = @_;
-  $LEXICON_THRESH = $thresh || 2;
+  $LEXICON_THRESH = (defined $thresh) ? $thresh : 2;
   $LEXICON = {};
 
   open LEX, $lex_file or die "can't open vocabulary file '$lex_file'";
@@ -155,7 +155,7 @@ sub signature {
 
   return $argword unless $LEXICON;   # no lexicon
   return $argword if ($word =~ /^UNK/);   # word is already a signature
-  return $argword if (exists $LEXICON->{$word} and $LEXICON->{$word} >= $LEXICON_THRESH);
+  return $argword if ($LEXICON_THRESH == 0) or (exists $LEXICON->{$word} and $LEXICON->{$word} >= $LEXICON_THRESH);
 
   my $sig = "UNK";
   my $lowered = lc($word);
