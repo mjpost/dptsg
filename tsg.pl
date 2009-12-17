@@ -72,9 +72,13 @@ $PARAMS{rules} = \%rules;
 my $PICKING_UP = 0;
 my $bzip = "/usr/bin/bzip2";
 $bzip = "$ENV{HOME}/bzip2" unless -e $bzip;
-
 my $iter = 1;
-$iter++ while -d $iter;
+
+# find the highest directory from a previous run
+opendir DIR, "t" or die "can't open dir";
+my $iter = max(1, grep(/^\d+$/, readdir(DIR)));
+closedir DIR;
+
 if ($iter == 1 || $PARAMS{startover}) {
   $iter = 1;
   print STDERR "Initializing counts with first pass over $PARAMS{corpus}.\...";
