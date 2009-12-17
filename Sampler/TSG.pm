@@ -366,7 +366,7 @@ sub rep {
 
   $hash->{str} .= ")";
   # remove merged node markers
-  $hash->{str} =~ s/\*//g;
+  $hash->{str} =~ s/\(\*/(/g;
 
   return $hash;
 }
