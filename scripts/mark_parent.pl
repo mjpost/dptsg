@@ -13,8 +13,8 @@ use warnings;
 use TSG;
 
 my %PARAMS = (
-  lexicon => "$basedir/data/lex.00-21",
-  thresh => 0,
+  lexicon => "$basedir/data/lex.02-21",
+  thresh => 1,
 );
 # process paramters and read in lexicon
 process_params(\%PARAMS,\@ARGV,\%ENV);
