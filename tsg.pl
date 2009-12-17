@@ -96,7 +96,6 @@ if ($iter == 1 || $PARAMS{startover}) {
   close CORPUS;
   print STDERR "done.\n";
 } else {
-  $iter--;
 
   if ($iter == $PARAMS{iters}) {
     print "* Already have $iter iterations of output, quitting\n";
