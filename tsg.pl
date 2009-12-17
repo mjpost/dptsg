@@ -93,6 +93,12 @@ if ($iter == 1 || $PARAMS{startover}) {
   print STDERR "done.\n";
 } else {
   $iter--;
+
+  if ($iter == $PARAMS{iters}) {
+    print "* Already have $iter iterations of output, quitting\n";
+    exit;
+  }
+
   $PICKING_UP = 1;
   print STDERR "Picking up where we left off (iteration $iter)...";
   my $corpus = "$iter/corpus";
