@@ -75,7 +75,7 @@ $bzip = "$ENV{HOME}/bzip2" unless -e $bzip;
 my $iter = 1;
 
 # find the highest directory from a previous run
-opendir DIR, "t" or die "can't open dir";
+opendir DIR, $PARAMS{rundir} or die "can't read files in rundir '$rundir'";
 my $iter = max(1, grep(/^\d+$/, readdir(DIR)));
 closedir DIR;
 
