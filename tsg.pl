@@ -31,6 +31,7 @@ my %PARAMS = (
   thresh => 2,
   corpus => "$basedir/data/wsj.trees.02-21.clean",
   rundir => $ENV{PWD},
+  dump => 1, # frequency with which to dump counts
   '*startover' => 0,
   srand => undef,
   verbosity => 1 );
@@ -152,8 +153,10 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
 
   close $sampler->{log} if ($PARAMS{log});
 
-  $sampler->dump_corpus($iter);
-  $sampler->dump_counts($iter);
+  if ($PARAMS{dump} and ! ($iter % $PARAMS{dump})) {
+    $sampler->dump_corpus($iter);
+    $sampler->dump_counts($iter);
+  }
 }
 
 sub mylog {
