@@ -5,7 +5,7 @@ use Exporter;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
-@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent|;
+@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
@@ -49,7 +49,7 @@ sub pruneit {
   } elsif (@{$node->{children}}) {
     # recursive case -- prune interior nodes whose all children are removed
     my $count = sum map { pruneit($_) } @kids;
-    $prune = ($count == scalar @kids);
+    $prune = ($count == scalar @kids) ? 1 : 0;
   }
 
   return $prune;
@@ -68,6 +68,12 @@ sub prune {
     } else {
       push(@keep,$kid);
     }
+  }
+
+  # removing children can result in a node of the form X -> X; if you
+  # see this, delete the child node by making its children our children
+  while (1 == @keep and $node->{label} eq $keep[0]->{label}) {
+    @keep = @{$keep[0]->{children}};
   }
 
   if (@keep) {
@@ -373,6 +379,29 @@ sub binarize_subtree {
   $node->{label} = "[" . (join ':',map {$_->{label}} @{$node->{children}}) . "]" if ($not_root and $unique);
 
   return $node;
+}
+
+# marks head child of each node
+sub mark_heads {
+  my ($node) = @_;
+
+  if (is_preterminal($node)) {
+    my $kid = @{$node->{children}}[0];
+    $node->{hpos} = 0;
+    $node->{head} = $kid->{label};
+    $node->{headtag} = $node->{label};
+
+  } elsif (@{$node->{children}}) {
+    my $rule = ruleof($node,1);
+    $rule =~ s/[\(\)]//g;
+    my $hpos = &head_pos(split(' ',$rule));
+    print "* WARNING: no head pos for rule '$rule'\n" if (-1 == $hpos);
+    # print "HPOS($rule) = $hpos\n";
+
+    $node->{hpos} = $hpos;
+    $node->{head} = @{$node->{children}}[$hpos]->{head};
+    $node->{headtag} = @{$node->{children}}[$hpos]->{headtag};
+  }
 }
 
 sub mark_subtree_height {
