@@ -1,0 +1,55 @@
+README file for entry point to the code
+Matt Post <post@cs.rochester.edu>
+January 2010
+--
+
+The file TSG.pm contains code that deals with tree manipulation and
+that is common to lots of different scripts (including the scripts in
+the scripts/ subdirectory and the file tsg.pl).  The sampler is
+contained in the files Sampler.pm and Sampler/TSG.pm.
+
+We hope the code will be reasonably straightforward to people other
+than its otauthor, despite it being written in Perl.  One important
+piece to understand is the tree representation.  Trees are of two
+types: full parse trees over an entire sentence (ending with with
+words at the leaves), and subtrees, otherwise known as rule fragments,
+the leaves of which can be either nonterminals or words.
+
+The same reprentation is used for both types of trees.  The nodes of
+the tree are (references to) perl hashes, and the children of each
+node are contained in a (reference to a) list named {children}.
+Leaves are represented as nodes with no children.  A node data
+structure thus looks like this:
+
+my $node = {
+   label => "S",
+};
+
+To build a tree, call the build_subtree routine with the parenthetical
+representation of a tree, e.g.,
+
+my $tree = build_subtree("(S (NP (DT the) (NN boy)) (VP (VBD refused)))");
+
+A great way to traverse the tree is to use the walk() function, which
+takes two arguments:
+- the tree to walk
+- a reference to a list of function pointers to apply to each node of the tree
+
+For example, to print the leaves of a tree, you could use:
+
+my $tree = build_subtree(...);
+walk(build_subtree($_),[\&print_leaves]);
+print $/;
+
+sub print_leaves {
+  my($node) = @_;
+  print delex($node->{label}) . " "
+    if (@{$node->{children}} == 0);
+}
+
+This applies the function print_leaves to every node in the tree (in
+pre order traversal -- use walk_postorder for postorder traversal),
+printing the node's label if that node has no children.  
+
+Many other node functions have been supplied in TSG.pm.
+

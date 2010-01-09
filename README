@@ -1,12 +1,184 @@
-* Process the trees into a nice format, build lexicon.
+DPTSG
+June 2009, Matt Post
+--
 
- You need a copy of the WSJ portion of the Penn treebank.
+The code contained in this project directory was used to obtain the
+results in our ACL 2009 short paper:
 
- Gets rid of treebank2 info, removes NONE nodes and traces.
+"Bayesian learning of a tree substitution grammar"
+Matt Post & Daniel Gildea
+ACL 2009
 
- $ cd $basedir
- $ mkdir data
- $ (cd /p/mt/corpora/wsj; cat {00,01,02,03,04,05,06,07,08,09,10,11,12,13,14,15,16,17,18,19,20,21}/*mrg) | \
-    ./scripts/oneline_treebank.pl > data/wsj.trees.00-21
- $ ./scripts/build_lex.pl data/wsj.trees.00-21 > data/lex.00-21
- $ cat data/wsj.trees.00-21 | ./scripts/clean.pl > data/wsj.trees.00-21.clean
+If you want to learn how the code works, along with all the caveats,
+please see the file README.code.  This file describes the project
+files, along with the steps needed to prepare all of the data to do
+Gibbs sampling.
+
+All files and code herein assume a base directory of
+$ENV{HOME}/code/dpfiner.  At some point I hope to parameterize this,
+but for now you will have to change it manually.
+
+* List of programs in scripts/
+** oneline_treebank.pl
+   Takes (on STDIN) a multi-line treebank tree and condenses it to a
+   single line (on STDOUT).
+** clean.pl
+   Removes empty nodes and Treebank v2 information from node labels.
+** build_lex.pl
+   Builds the lexicon.  This is used by most programs to determine
+   which words should be converted to one of the ~ 60 unknown word
+   classes.
+** print_leaves.pl
+   Takes a oneline tree and prints out its frontier.
+** extract_lines.pl
+   Takes a list of line numbers and a file, and prints out only lines
+   from the file corresponding to those in the list of line numbers.
+** annotate_spinal_grammar.pl
+   Takes a treebank (one tree per line) and annotates it with the
+   derivations from the spinal grammar, using the Magerman head
+   selection rules.
+** rule_probs.pl
+   Produces a grammar from a combination of rule counts in the form
+   <count> <rule>
+   and oneline trees (these can be interspersed).  
+** extract_bod01_grammar.pl
+   Samples random trees at various heights from a treebank,
+   reproducing the "minimal subset" grammar of Bod.
+
+* Preparing the data
+** Process the trees into a nice format.
+
+  You need a copy of the WSJ portion of the Penn treebank.
+
+  Gets rid of treebank2 info, removes NONE nodes and traces.
+
+  $ cd $basedir
+  $ mkdir data
+  $ (cd /p/mt/corpora/wsj; cat {02,03,04,05,06,07,08,09,10,11,12,13,14,15,16,17,18,19,20,21}/*mrg) | \
+    ./oneline_treebank.pl > data/wsj.trees.02-21
+  $ cat data/wsj.trees.02-21 | ./clean.pl > data/wsj.trees.02-21.clean
+
+** Generate the lexicon
+
+  This determines which words get transformed into one of the ~ 60
+  unknown word bins (code for which was borrowed and adapted from the
+  Berkeley parser)
+
+  $ ./build_lex.pl 5 data/wsj.trees.02-21.clean > data/lex.02-21
+
+** Annotate the training data with spinal annotations
+
+   A TSG derivation tree is represented by prepending a '*' to the
+   labels of nodes that are internal to a TSG rule, e.g., the tree
+     (S (*NP (*DT the) (NN boy)) (*VP (VBD was)) (*. .))
+   would yield the rules
+     (S (NP (DT the) NN) (VP VBD) (. .))
+     (NN boy)
+     (VBD was)
+
+   Produce the spinal annotation of the training data with the
+   following command:
+
+   $ ./annotate_spinal_grammar.pl data/lex.02-21 < data/wsj.trees.02-21.clean |
+     > data/wsj.trees.02-21.clean.annotated
+
+   You need this representation if you want to initialize the Gibbs
+   sampler from the spinal derivations instead of the PCFG derivations, and
+   also to extract the spinal baseline grammar.
+
+** Generate the development and test sets.
+
+   $ cat /p/mt/corpora/wsj/22/*.mrg | ./oneline_treebank.pl > data/wsj.trees.22
+   $ cat data/wsj.trees.22 | ./clean.pl > data/wsj.trees.22.clean
+   $ cat data/wsj.trees.22.clean | ./print_leaves.pl > data/wsj.22.words
+
+   $ cat /p/mt/corpora/wsj/23/*.mrg | ./oneline_treebank.pl > data/wsj.trees.23
+   $ cat data/wsj.trees.23 | ./clean.pl > data/wsj.trees.23.clean
+   $ cat data/wsj.trees.23.clean | ./print_leaves.pl > data/wsj.23.words
+
+   Get those sentences with forty words max:
+
+   $ awk 'BEGIN { sentno=0 } { sentno++; if (NF <= 40) printf("%d\n",sentno); }' wsj.23.words > wsj.23.words.lines-max40
+   $ extract_lines.pl -l wsj.23.words.lines-max40 -f wsj.23.words > wsj.23.words.max40
+
+   $ awk 'BEGIN { sentno=0 } { sentno++; if (NF <= 40) printf("%d\n",sentno); }' wsj.22.words > wsj.22.words.lines-max40
+   $ extract_lines.pl -l wsj.22.words.lines-max40 -f wsj.22.words > wsj.22.words.max40
+
+** Generate the PCFG rule probs used for the base measure.
+
+   $ cat data/wsj.trees.02-21.clean | ./rule_probs.pl -counts 1 > data/pcfg_counts
+   $ cat data/wsj.trees.02-21.clean | ./rule_probs.pl > data/pcfg_rules.prb
+
+   (alternately, the grammar could be produced directly from the counts:
+    $ cat data/pcfg_counts | ./rule_probs.pl > data/pcfg_rules.prb
+   )
+
+** Generate the spinal grammar
+
+   $ cat data/wsj.trees.02-21.clean.annotated | ./rule_probs.pl -counts 1 > data/spinal_counts
+   $ cat data/pcfg_counts data/spinal_counts | ./rule_probs.pl > data/spinal_rules.prb
+
+** Generate Bod's grammar
+
+   $ cat data/wsj.trees.02-21.clean | ./extract_bod01_grammar.pl > data/bod01.rules
+
+   The file 'bod01.rules" prepends each line with the height of that
+   rule.  To build the grammar, remove that field, add in the PCFG
+   counts, and normalize:
+
+   $ (perl -pe 's/^\d+ //' data/bod01.rules; cat data/pcfg_counts) | ./rule_probs.pl > data/bod01.prb
+   
+* Gibbs sampling
+
+  The Gibbs sampler comprises the files tsg.pl, the generic sampler
+  code in Sampler.pm, and the TSG-specific sampling code in
+  Sampler/TSG.pm.  As input, it takes a treebank with arbitrary TSG
+  derivations and a PCFG used to score the base measure.  Each
+  iteration's output is written to a subdirectory whose name is the
+  iteration number, and whose contents are the corpus state at tne end
+  of that iteration and the counts of TSG rules extracted from that
+  corpus derivation state.
+
+  The sampler can be interrupted at any time, and will restart from
+  the last completed iteration (it will be safer to remove the last
+  iteration's directory if it is incomplete).
+
+  Usage:
+
+  tsg.pl
+    -iters     number of iterations
+    -corpus    corpus to initialize counts from (unless picking up
+               from an interrupted run)
+    -alpha     the value of alpha for the DP prior
+    -stop      the stop probability for the DP base measure
+    -pcfg      the pcfg grammar used for the DP base measure
+    -rundir    the run directory (default = pwd)
+    [many more options are available]
+
+    e.g.,
+    $ tsg.pl -corpus $basedir/data/wsj.trees.02-21.clean -iters 500
+
+  To extract a Gibbs-sampled grammar, use one of:
+
+  - extract a summed grammar (from counts of first $i iters)
+
+    (for num in $(seq 1 $i); do
+      bzcat $num/counts.bz2
+    done) | $basedir/scripts/rules_probs.pl > 1-$i.prb
+
+  - extract a point grammar (from a single iteration $i)
+
+    bzcat $i/counts.bz2 | $basedir/scripts/rule_probs.pl > $i.prb
+
+  You can now parse with these grammar by passing them to the parser
+  as the value of the -grammar flag.  
+
+* Parsing
+
+  Parse with the learned grammars.  I will provide my parser once I have
+  a chance to clean it up (or upon request).
+
+* Evaluation
+
+  Use evalb with the COLLINS.prm file.
+  http://nlp.cs.nyu.edu/evalb/
