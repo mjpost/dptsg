@@ -72,7 +72,6 @@ $PARAMS{rules} = \%rules;
 
 my $PICKING_UP = 0;
 my $bzip = "/usr/bin/bzip2";
-$bzip = "$ENV{HOME}/bzip2" unless -e $bzip;
 
 # find the highest directory from a previous run
 opendir DIR, $PARAMS{rundir} or die "can't read files in rundir '$PARAMS{rundir}'";
@@ -132,6 +131,13 @@ $sampler->count();
 
 for ( ; $iter <= $PARAMS{iters}; $iter++) {
   print "ITERATION $iter TIMESTAMP ", , $/;
+
+  my $stop_file = ".stop";
+  if (-e $stop_file) {
+    unlink($stop_file);
+    print "QUITTING ON PRESENCE OF STOP FILE\n";
+    exit;
+  }
 
   # log
   open $sampler->{log}, ">log.$iter" if ($PARAMS{log});
