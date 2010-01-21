@@ -14,15 +14,16 @@ use TSG;
 
 my %PARAMS = (
   lexicon => "$basedir/data/lex.02-21",
-  thresh => 2,
+  thresh => 1,
   tags => 0,
   words => 1,
 );
 process_params(\%PARAMS,\@ARGV,\%ENV);
+my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
 
 while (<>) {
   chomp;
-  walk(build_subtree($_),[\&print_leaves]);
+  walk(build_subtree($_,$lexicon),[\&print_leaves]);
   print $/;
 }
 
