@@ -48,10 +48,14 @@ while (my $line = <>) {
 
   $line =~ s/\s*$//;
 
-  if ($line =~ /^\d/) {  # reading in counts
+  if ($line =~ /^\d+ /) {  # reading in counts
     my ($count,$label,@rest) = split ' ', $line;
     my $rule = join(" ", $label, @rest);
-    $COUNTS{lhsof($rule)}{$rule} += $count;
+
+    my $lhs = $label;  $lhs =~ s/^\(//;
+
+    increment_counts($lhs,$rule,$count);
+
   } else {               # reading in corpora
     my $tree = build_subtree($line,$lexicon);
     walk($tree,[\&count_rule]);
@@ -60,12 +64,14 @@ while (my $line = <>) {
 
 my $total_words = sum values %WORDCOUNTS;
 
+# sum lefthand sides for each nonterminal
 my %LHS_COUNTS;
-# sum lefthand sides
 foreach my $lhs (keys %COUNTS) {
   map { $LHS_COUNTS{$lhs} += $_ } values %{$COUNTS{$lhs}};
 }
 
+# delete rules whose count is below the rule threshold; note that this
+# occurs AFTER summing for each lefthand side
 foreach my $lhs (keys %COUNTS) {
   while (my ($key,$val) = each %{$COUNTS{$lhs}}) {
     if ($val < $PARAMS{rulethresh}) {
@@ -75,28 +81,33 @@ foreach my $lhs (keys %COUNTS) {
   }
 }
 
-my $k = 0.5;
+# compute the mass reserved for unknown words for each preterminal.
+# that mass is the percentage (by token) of words with count 1
+my %mass_for_unseen;
+foreach my $tag (keys %UNKCOUNTS) {
+  my $sum = 0;
+  while (my ($rule,$count) = each %{$UNKCOUNTS{$tag}}) {
+    $sum++ if $count == 1;
+  }
+  $mass_for_unseen{$tag} = $sum / $LHS_COUNTS{$tag};
+}  
+
+# print out the counts or the rule probabiliteis
 foreach my $lhs (keys %COUNTS) {
   foreach my $rule (sort { $COUNTS{$lhs}{$b} <=> $COUNTS{$lhs}{$a} } keys %{$COUNTS{$lhs}}) {
+
     if ($PARAMS{counts}) {
+      # print the rule count 
       print "$COUNTS{$lhs}{$rule} $rule\n";
     } else {
+      # print the rule probability
       my $pr;
       if ($rule =~ /^\(\S+ _(\S+)_\)$/) {
         my $word = $1;
 
-        my $class = classof($word);
-        my $p_tag_word = ($COUNTS{$lhs}{$rule} + $k * tag_prob($lhs,classof($word))) / ($WORDCOUNTS{$word} + $k);
-        if ($lhs eq "IN") {
-          # print "* $COUNTS{$lhs}{$rule}\n";
-          # print "* $k\n";
-          # print "* tag_prob($lhs,$class) = " . tag_prob($lhs,classof($word)) . $/;
-          # print "* WORDCOUNTS($word) $WORDCOUNTS{$word}\n";
-        }
- 
-        # P(word|tag) = P(tag|word) * P(word) / P(tag)
-        $pr = $p_tag_word * ($WORDCOUNTS{$word}/$total_words) / ($TAGCOUNTS{$lhs}/$total_words);
-        
+        # the probability for preterminals has to make space for
+        # unknown word rewrites
+        $pr = (1.0 - $mass_for_unseen{$lhs}) * ($COUNTS{$lhs}{$rule} / $LHS_COUNTS{$lhs});
       } else {
         $pr = ($COUNTS{$lhs}{$rule} / $LHS_COUNTS{$lhs});
       }
@@ -105,45 +116,45 @@ foreach my $lhs (keys %COUNTS) {
   }
 }
 
-foreach my $tag (keys %UNKCOUNTS) {
-  foreach my $class (keys %{$UNKCOUNTS{$tag}}) {
-    # my $tag_prob = tag_prob($tag,$class);
-    # my $pr = $tag_prob * ($TAGCOUNTS{$tag} / $total_words) / ($CLASSCOUNTS{$class} / $total_words);
-
-    my $pr = ($UNKCOUNTS{$tag}{$class} / $total_words) / ($TAGCOUNTS{$tag} / $total_words);
-    print "* $tag $class $UNKCOUNTS{$tag}{$class} $TAGCOUNTS{$tag} $total_words ($pr)\n";
-
-    print "$pr ($tag _${class}_)\n";
+# now print the distribution over unknown word tokens, but only if we
+# are outputting a probability distribution instead of counts
+unless ($PARAMS{counts}) {
+  foreach my $tag (keys %UNKCOUNTS) {
+    foreach my $class (keys %{$UNKCOUNTS{$tag}}) {
+      my $pr = $mass_for_unseen{$tag} * $UNKCOUNTS{$tag}{$class} / $LHS_COUNTS{$tag};
+      print "$pr ($tag _${class}_)\n" if $pr > 0;
+    }
   }
 }
 
 ## SUBROUTINES #######################################################
 
 sub count_rule {
-  my $node = shift;
+  my ($node) = @_;
   my $lhs = $node->{label};
 
+  # if the current node is the head of a rule, increment relevant
+  # counts
   if ($lhs !~ /^\*/ and @{$node->{children}}) {
-    my $rule = ruleof($node);
-    $COUNTS{$lhs}{$rule}++;
-
-    if (is_preterminal($node)) {
-      my $word = delex(@{$node->{children}}[0]->{label});
-      # print "UNKCOUNTS($lhs," . classof($word) . ")\n";
-      $UNKCOUNTS{$lhs}{classof($word)}++;
-      $WORDCOUNTS{$word}++;
-      $TAGCOUNTS{$lhs}++;
-      $CLASSCOUNTS{classof($word)}++;
-    }
+    increment_counts($lhs,ruleof($node));
   }
 }
 
-# computes Pr(class | tag)
-sub tag_prob {
-  my ($tag,$class) = @_;
+sub increment_counts {
+  my ($lhs,$rule,$count) = @_;
+  $count = 0 unless defined $count;
+  
+  # the count of the rule itself
+  $COUNTS{$lhs}{$rule} += $count;
 
-  my $pr = $UNKCOUNTS{$tag}{$class} / $TAGCOUNTS{$tag};
-  # print "TAG_PROB($tag,$class) = $pr\n";
-
-  return $pr;
+  # for preterminal rules, we also maintain counts for the
+  # distribution over unknown word tokens
+  if ($rule =~ /^\(\S+ _(\S+)_\)$/) {
+    my $word = delex($1);
+    # print "UNKCOUNTS($lhs," . classof($word) . ")\n";
+    $UNKCOUNTS{$lhs}{classof($word)} += $count;
+    $WORDCOUNTS{$word} += $count;
+    $TAGCOUNTS{$lhs} += $count;
+    $CLASSCOUNTS{classof($word)} += $count;
+  }
 }
