@@ -5,7 +5,7 @@ use Exporter;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
-@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads|;
+@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature classof mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads binarize_grammar push_weights|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
@@ -153,54 +153,133 @@ sub signature {
   my $argword = $word;
   $word = delex($word);
 
-  return $argword unless $LEXICON;   # no lexicon
-  return $argword if ($word =~ /^UNK/);   # word is already a signature
-  return $argword if ($LEXICON_THRESH == 0) or (exists $LEXICON->{$word} and $LEXICON->{$word} >= $LEXICON_THRESH);
-
   my $sig = "UNK";
+
+  if (! defined $LEXICON) {
+    # no lexicon, can't transform
+    $sig = $argword;
+  } elsif ($word =~ /^UNK/) {
+    # word is already a signature
+    $sig = $argword;
+  } elsif ( ($LEXICON_THRESH == 0) or (exists $LEXICON->{$word} and $LEXICON->{$word} >= $LEXICON_THRESH)) {
+    # above threshold, no need to transform
+    $sig = $argword;
+  } else {
+    $sig = classof($word);
+  }
+
+  return $sig;
+}
+
+sub classof {
+  my ($word) = @_;
+  $word = delex($word);
   my $lowered = lc($word);
 
-  if ($word =~ /^[A-Z]/) {
-    if (lcfirst($word) eq $lowered) { # only 1st char is uppercase
-      $sig = "$sig-INITC";
-       $sig = "$sig-KNOWNLC", if $LEXICON->{$lowered}==1;
-    } else { $sig = "$sig-CAPS"; }
-  } else { 
-    if ($word ne $lowered) {
-      $sig = "$sig-CAPS";
-    } else { 
-      $sig = "$sig-LC"; } 
-  }
-
-  $sig = "$sig-NUM", if ($word =~ /[0-9]/);
-  $sig = "$sig-DASH", if ($word =~ /[-]/);
-
   my $len = length($word);
-  if ($len>=3 && $lowered =~ /s$/){
-    $sig = "$sig-s", if !($lowered =~ /ss$/ || $lowered =~ /us$/ || $lowered =~ /is$/);
+
+  my $sig = "UNK";
+
+  my $hasDigit = ($word =~ /[0-9]/) ? 1 : 0;
+  my $hasLower = ($word =~ /[a-z]/) ? 1 : 0;
+  my $hasDash  = ($word =~ /\-/)    ? 1 : 0;
+  my $numCaps = 0;
+  $numCaps++ while $word =~ /[A-Z]/g;
+
+  if ($word =~ /^[A-Z]/) {
+    if ($numCaps == 1) {
+      $sig .= "-INITC";
+      if (exists $LEXICON->{$lowered}) {
+        $sig .= "-KNOWNLC";
+      }
+    } else {
+      $sig .= "-CAPS";
+    }
+  } elsif ($word =~ /^[^a-zA-Z]/ and $numCaps > 0) {
+    $sig .= "-CAPS";
+  } elsif ($hasLower) {
+    $sig .= "-LC";
   }
 
-  if ($len>=5) {
-    $sig = "$sig-ed", if ($lowered =~ /ed$/);
-    $sig = "$sig-ing", if ($lowered =~ /ing$/);
-    $sig = "$sig-ion", if ($lowered =~ /ion$/);
-    $sig = "$sig-er", if ($lowered =~ /er$/);
-    $sig = "$sig-est", if ($lowered =~ /est$/);
-    $sig = "$sig-al", if ($lowered =~ /al$/);
-    if ($lowered =~ /y$/){
-      if ($lowered =~ /ly$/){ 
-        $sig = "$sig-ly"; 
-      } else { 
-        if ($lowered =~ /ity$/) {  
-          $sig = "$sig-ity"; 
-        } else { 
-          $sig = "$sig-y"; 
-        } 
-      }
+  if ($hasDigit) {
+    $sig .= "-NUM";
+  }
+  if ($hasDash) {
+    $sig .= "-DASH";
+  }
+
+  if ($len >= 3 && $lowered =~ /s$/){
+    $sig .= "-s" if !($lowered =~ /ss$/ || $lowered =~ /us$/ || $lowered =~ /is$/);
+  } elsif ($len >= 5 && !$hasDash && !($hasDigit and $numCaps > 0)) {
+    $sig .= "-ed", if ($lowered =~ /ed$/);
+    $sig .= "-ing", if ($lowered =~ /ing$/);
+    $sig .= "-ion", if ($lowered =~ /ion$/);
+    $sig .= "-er", if ($lowered =~ /er$/);
+    $sig .= "-est", if ($lowered =~ /est$/);
+    if ($lowered =~ /ly$/) {
+      $sig .= "-ly";
+    } elsif ($lowered =~ /ity$/) {
+      $sig .= "-ity";
+    } elsif ($lowered =~ /y$/) {
+      $sig .= "-y";
     }
+    $sig .= "-al" if ($lowered =~ /al$/);
   }
   return $sig;
 }
+
+# sub classof {
+#   my ($word) = @_;
+
+#   $word = delex($word);
+
+#   my $sig = "UNK";
+#   my $lowered = lc($word);
+
+#   if ($word =~ /^[A-Z]/) {
+#     if (lcfirst($word) eq $lowered) { # only 1st char is uppercase
+#       $sig .= "-INITC";
+#       $sig .= "-KNOWNLC" if exists $LEXICON->{$lowered};
+#     } else { 
+#       $sig .= "-CAPS"; 
+#     }
+#   } else { 
+#     if ($word ne $lowered) {
+#       $sig .= "-CAPS";
+#     } elsif ($word =~ /[A-Z]/) { 
+#       $sig .= "-LC"; 
+#     } 
+#   }
+
+#   $sig .= "-NUM" if ($word =~ /[0-9]/);
+#   $sig .= "-DASH" if ($word =~ /[-]/);
+
+#   my $len = length($word);
+#   if ($len >= 3 && $lowered =~ /s$/){
+#     $sig .= "-s" if !($lowered =~ /ss$/ || $lowered =~ /us$/ || $lowered =~ /is$/);
+#   }
+
+#   if ($len >= 5) {
+#     $sig .= "-ed", if ($lowered =~ /ed$/);
+#     $sig .= "-ing", if ($lowered =~ /ing$/);
+#     $sig .= "-ion", if ($lowered =~ /ion$/);
+#     $sig .= "-er", if ($lowered =~ /er$/);
+#     $sig .= "-est", if ($lowered =~ /est$/);
+#     $sig .= "-al", if ($lowered =~ /al$/);
+#     if ($lowered =~ /y$/){
+#       if ($lowered =~ /ly$/){ 
+#         $sig .= "-ly"; 
+#       } else { 
+#         if ($lowered =~ /ity$/) {  
+#           $sig .= "-ity"; 
+#         } else { 
+#           $sig .= "-y"; 
+#         } 
+#       }
+#     }
+#   }
+#   return $sig;
+# }
 
 # builds a tree structure from a one-line textual representation
 sub build_subtree {
@@ -228,6 +307,13 @@ sub build_subtree {
     } elsif ($token =~ /^\)/) { ### end of node
       # remove one item from the stack of parents
       $top = pop(@c);
+
+      # check for common error
+      if (! defined $top->{children}) {
+        print STDERR "* [$.] FATAL: $c->{label} has no children (token $token)\n";
+        exit;
+      }
+
       # set the number of children I have (since we know it now)
       $top->{numkids} = scalar @{$top->{children}};
       $top->{frontier} = join(' ', map { $_->{frontier} } @{$top->{children}});
@@ -566,6 +652,198 @@ sub clean {
 sub mark_parent {
   my ($node) = @_;
   map { $_->{parent} = $node } @{$node->{children}};
+}
+
+# returns the level of binarization (the distance from the bottom of
+# the binarization) of a nonterminal, e.g.,
+# S                  => 0
+# <S:NP:VP>          => 1
+# <S:NP:<VP:VBD:VP>> => 2
+sub bin_level {
+  my $arg = shift;
+  my $lhs = (split(' ',$arg))[0];
+  my $count = 0;
+  $count++ while $lhs =~ /</g;
+  return $count;
+}
+
+sub binarize_grammar {
+  my ($rulesarg,$collapse) = @_;
+
+  my (%rules,%pmap,%notdone,%counts,%rulemap);
+
+  # 1. count all frontier pairs, and map them to the rule they appear in
+  while (my ($rule,$prob) = each %$rulesarg) {
+#     print "RULE($rule) $prob\n";
+    my ($lhs,@leaves) = split(' ',$rule);
+    my $leaves = join(" ",@leaves);
+    if (@leaves > 2) {
+      $notdone{$lhs}{$leaves} = $prob;
+      map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
+      $rulemap{"$lhs $leaves"} = "$lhs $leaves";
+    } else {
+      $rules{join($;,@leaves)}{$lhs} = $prob;
+    }
+  }
+
+  # 2. greedily reduce pairs until no more remain
+  foreach my $lhs (keys %counts) {
+
+    while (scalar keys %{$notdone{$lhs}}) {
+      # find the max pair in each rule, binarize that
+      my %postponed;
+      foreach my $leaves (keys %{$notdone{$lhs}}) {
+        my @leaves = split(' ',$leaves);
+        my $bestpair = undef;
+        my $bestcount = 0;
+        my $bestpos = -1;
+        for my $i (1..$#leaves) {
+          my $pair = "$leaves[$i-1] $leaves[$i]";
+          my ($l,$r) = ($leaves[$i-1],$leaves[$i]);
+#           my $label = "<$lhs:$l:$r>";
+#           my $label = "<$l:$r>";
+          my $label = ($collapse eq "lhs")
+              ? "<$lhs:$l:$r>"
+              : "<$l:$r>";
+          # only allow a particular binarization to occur once per rule
+          if ($counts{$lhs}{$l,$r} > $bestcount) { # && ! exists $pmap{"$lhs $leaves"}{"$label $l $r"}) {
+            $bestcount = $counts{$lhs}{$l,$r};
+            $bestpair = $pair;
+            $bestpos = $i;
+          }
+        }
+
+#         print "RULE($lhs $leaves)\n";
+#         print "  BEST($bestpos,$bestpair,$bestcount)\n";
+
+        # subtract all the counts
+        map { $postponed{$leaves[$_-1],$leaves[$_]}-- } (1..$#leaves);
+#          map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}-- } (1..$#leaves);
+
+        # make the replacement
+        my ($l,$r) = split(' ',$bestpair);
+#         my $label = "<$lhs:$l:$r>";
+#         my $label = "<$l:$r>";
+        my $label = ($collapse eq "lhs")
+            ? "<$lhs:$l:$r>"
+            : "<$l:$r>";
+
+        # create new rule, and adjust the list of binarized rules used
+        # by the top-level parent (which now has a new name)
+        $rules{$l,$r}{$label} = 1.0;  # record the rule
+        splice(@leaves,$bestpos-1,2,($label)); # insert binarized rule
+        my $newleaves = join(" ",@leaves); # new leaves string
+        $pmap{"$lhs $newleaves"} = $pmap{"$lhs $leaves"}; # rename parent
+        delete $pmap{"$lhs $leaves"}; # delete old parent
+        $pmap{"$lhs $newleaves"}{"$label $l $r"}++; # count new child
+        
+        # update the map between the original rule and its top-level
+        # binarized piece
+        if ($newleaves ne $leaves) {
+          $rulemap{"$lhs $newleaves"} = $rulemap{"$lhs $leaves"};
+          delete $rulemap{"$lhs $leaves"};
+        }
+
+        # increment the counts
+        map { $postponed{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
+#         map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
+
+        # update
+        my $prob = $notdone{$lhs}{$leaves};
+        delete $notdone{$lhs}{$leaves};
+        if (@leaves > 2) {
+          $notdone{$lhs}{join(" ",@leaves)} = $prob;
+        } elsif (@leaves == 2) {
+#           print "TOP($lhs -> $newleaves) = $prob\n";
+          $rules{join($;,@leaves)}{$lhs} = $prob;
+        }
+      }
+
+        # update counts if we're not done
+      if (scalar keys %{$notdone{$lhs}}) {
+        map { $counts{$lhs}{$_} += $postponed{$_} } keys %postponed;
+      }
+    }
+  }
+
+  # debugging
+#   while (my ($parent,$hash) = each %pmap) {
+#     print "PARENT RULE: $rulemap{$parent}\n";
+#     my ($lhs,@rhs) = split(' ',$parent);
+#     my $rhs = join($;,@rhs);
+#     my $prob = $rules{$rhs}{$lhs};
+#     print "  $parent ($prob)\n";
+#     while (my ($key,$prob) = each %{$pmap{$parent}}) {
+#       print "  $key ($prob)\n";
+#     }
+#   }
+
+  # convert the pmap (where a parent rule lists all of the binarized
+  # pieces it was turned into) into the binmap (in which each binary
+  # segment points to all of the parent rules it is part of)
+  my %binmap;
+  foreach my $rule (keys %pmap) {
+    # each binary rule points to its parent, and its value is the
+    # number of times it appears beneath that parent
+    map { $binmap{$_}{$rule} = $pmap{$rule}{$_} } keys %{$pmap{$rule}};
+#     map { $binmap{$_}{$rule} = 1.0 } keys %{$pmap{$rule}};
+  }
+
+  return (\%rules,\%binmap,\%rulemap);
+}
+
+# takes a binarized grammar and pushes the probability mass down as
+# far as possible
+sub push_weights {
+  my ($bin_map,$rules,$rulemap,$method) = @_;
+
+  # 1. sort the LHSs topologically
+  my @binrules = sort { bin_level($a) <=> bin_level($b) } keys %$bin_map;
+  
+  # 2. process each lhs
+  foreach my $binrule (@binrules) {
+#      print "BINRULE: '$binrule'\n";
+
+    # 2a. determine min prob of top-level rules sharing this bin piece
+    my ($lhs,@rhs) = split(' ',$binrule);
+    my @tops = keys %{$bin_map->{$binrule}};
+    my $shared_prob = 
+        max( map { my ($lhs,@rhs) = split ' ', $_;
+                   my $rhs = join($;,@rhs);
+                   my $numtimes = $bin_map->{$binrule}{$_}; # num times appears
+                   if ($method eq "nthroot" and defined $rulemap) {
+                     my $fullrule = $rulemap->{join(' ',$lhs,@rhs)};
+#                      print "FULLRULE($lhs @rhs) = $fullrule\n";
+                     my @nts = split(' ',$fullrule);
+                     my $n = @nts - 2;
+#                    print "  TOP($_) = $lhs -> $rhs ($rules->{$rhs}{$lhs})\n";
+                     $rules->{$rhs}{$lhs} ** (1.0/$numtimes/$n);
+                   } else {
+                     $rules->{$rhs}{$lhs} ** (1.0/$numtimes);
+                   }
+               }
+             @tops);
+#         max( map { my ($lhs,@rhs) = split ' ', $_;
+#                    my $rhs = join($;,@rhs);
+# #                    print "  TOP($_) = $lhs -> $rhs ($rules->{$rhs}{$lhs})\n";
+#                    $rules->{$rhs}{$lhs} } 
+#              @tops);
+
+#      print "NEW PROB($binrule) = $shared_prob\n";
+
+    # 2b. assign (some function of) this prob to the bin piece
+    my $rhs = join($;,@rhs);
+    $rules->{$rhs}{$lhs} = $shared_prob;
+
+    # 2c. divide out that prob from top-level rules sharing this bin piece
+    map { my ($lhs,@rhs) = split ' ', $_;
+          my $rhs = join($;,@rhs);
+          my $numtimes = $bin_map->{$binrule}{$_}; # num times appears
+#           print "  PARENT PROB($_) = $rules->{$rhs}{$lhs} / $shared_prob ** $numtimes";
+          $rules->{$rhs}{$lhs} /= ($shared_prob ** $numtimes);
+#           print " = $rules->{$rhs}{$lhs}\n";
+    } @tops;
+  }
 }
 
 1;
