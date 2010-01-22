@@ -89,6 +89,7 @@ foreach my $tag (keys %UNKCOUNTS) {
   while (my ($rule,$count) = each %{$UNKCOUNTS{$tag}}) {
     $sum++ if $count == 1;
   }
+  die "Zero count for tag $tag!" unless $LHS_COUNTS{$tag};
   $mass_for_unseen{$tag} = $sum / $LHS_COUNTS{$tag};
 }  
 
@@ -142,7 +143,7 @@ sub count_rule {
 
 sub increment_counts {
   my ($lhs,$rule,$count) = @_;
-  $count = 0 unless defined $count;
+  $count = 1 unless defined $count;
   
   # the count of the rule itself
   $COUNTS{$lhs}{$rule} += $count;
