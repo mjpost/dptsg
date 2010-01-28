@@ -43,7 +43,8 @@ sub substitute_subtree {
   my ($node,$nodes,$isroot) = @_;
   $isroot = 1 unless defined $isroot;
 
-  $node->{label} = "*" . $node->{label} unless $isroot;
+  # we don't want the annotations here
+  # $node->{label} = "*" . $node->{label} unless $isroot;
 
   my $numkids = @{$node->{children}};
 
@@ -66,14 +67,17 @@ sub substitute_subtree {
 sub unflatten {
   my ($node) = @_;
 
-  my $rule = ruleof($node,1);
+  if ($node->{children}) {
 
-  if (exists $rule_mapping{$rule}) {
-    my $full_rule = $rule_mapping{$rule};
+    my $rule = "$node->{label} --> " . join(" ",map {$_->{label}} @{$node->{children}});
 
-    my $subtree = build_subtree($full_rule);
-    my @kids = @{$node->{children}};
-    substitute_subtree($subtree,\@kids);
-    $node->{children} = $subtree->{children};
+    if (exists $rule_mapping{$rule}) {
+      my $full_rule = $rule_mapping{$rule};
+
+      my $subtree = build_subtree($full_rule);
+      my @kids = @{$node->{children}};
+      substitute_subtree($subtree,\@kids);
+      $node->{children} = $subtree->{children};
+    }
   }
 }
