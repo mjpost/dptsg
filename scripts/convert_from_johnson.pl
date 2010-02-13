@@ -24,16 +24,24 @@ while (my $line = <READ>) {
 }
 close READ;
 
+# a second argument queues leaving in the asterisks that mark TSG
+# internal nodes
+my $annotate = @ARGV;
+
 my (%rules,%map);
 
 while (my $line = <>) {
   chomp($line);
+  if ($line eq "(TOP)") {
+    print "(TOP)\n";
+    next;
+  }
 
   my $tree = build_subtree($line);
 
   walk($tree,[\&unflatten]);
 
-  print build_subtree_oneline($tree), $/;
+  print build_subtree_oneline($tree,1), $/;
 }
 
 sub substitute_subtree {
@@ -43,8 +51,9 @@ sub substitute_subtree {
   my ($node,$nodes,$isroot) = @_;
   $isroot = 1 unless defined $isroot;
 
-  # we don't want the annotations here
-  # $node->{label} = "*" . $node->{label} unless $isroot;
+  if ($annotate) {
+    $node->{label} = "*" . $node->{label} unless $isroot;
+  }
 
   my $numkids = @{$node->{children}};
 
