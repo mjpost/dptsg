@@ -5,7 +5,7 @@ use Exporter;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
-@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature classof mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads binarize_grammar push_weights|;
+@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature classof mark_spans mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads binarize_grammar binarize_subtree push_weights|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
@@ -25,8 +25,8 @@ sub lex {
 
 sub delex {
   my $arg = shift;
-#   $arg =~ s/^_|_$//g;
-  $arg =~ s/_//g;
+  # we don't want to remove underscores internal to a word
+  $arg =~ s/^_|_$//g;
   return $arg;
 }
 
@@ -148,7 +148,8 @@ sub read_pos {
 }
 
 sub signature {
-  my ($word) = @_;
+  my ($word,$pos) = @_;
+  $pos = -1 unless defined $pos;
 
   my $argword = $word;
   $word = delex($word);
@@ -165,15 +166,16 @@ sub signature {
     # above threshold, no need to transform
     $sig = $argword;
   } else {
-    $sig = classof($word);
+    $sig = classof($word,$pos);
   }
 
   return $sig;
 }
 
 sub classof {
-  my ($word) = @_;
+  my ($word,$pos) = @_;
   $word = delex($word);
+  $pos = -1 unless defined $pos;
   my $lowered = lc($word);
 
   my $len = length($word);
@@ -187,7 +189,7 @@ sub classof {
   $numCaps++ while $word =~ /[A-Z]/g;
 
   if ($word =~ /^[A-Z]/) {
-    if ($numCaps == 1) {
+    if ($pos == 1 && $numCaps == 1) {
       $sig .= "-INITC";
       if (exists $LEXICON->{$lowered}) {
         $sig .= "-KNOWNLC";
@@ -310,8 +312,8 @@ sub build_subtree {
 
       # check for common error
       if (! defined $top->{children}) {
-        print STDERR "* [$.] FATAL: $c->{label} has no children (token $token)\n";
-        exit;
+        print STDERR "* [$.] WARNING: $c->{label} has no children (token $token)\n";
+        return undef;
       }
 
       # set the number of children I have (since we know it now)
@@ -331,7 +333,8 @@ sub build_subtree {
 
     } else { ### leaf (also new node)
       $c = {};
-      $c->{label} = $lexicon ? lex(signature($token)) : $token;
+      $c->{label} = $lexicon ? lex(signature($token)) : lex($token);
+      $c->{word} = $token;
       $c->{children} = [];
       $c->{numkids} = 0;
       $c->{frontier} = $token;
@@ -377,7 +380,7 @@ sub build_subtree_oneline {
     map { $str .= " " . build_subtree_oneline($_,$delex) } @{$node->{children}};
     $str .= ")";
   } else {
-    $str = $delex ? delex($node->{label}) : $node->{label};
+    $str = $delex ? delex($node->{word}) : $node->{label};
   }
 
   return $str;
@@ -423,7 +426,7 @@ sub binarize_subtree {
     not_root => 0,  # true if this is not the root of a tree/subtree
     unique => 1,    # annotate nodes to be part of a subtree
     dir => "right", # left or right binarization
-    collapse => "none",  # lhs:put lhs in binarized name
+    collapse => "none",  # lhs:put lhs in binarized name; @: prefix @ sign
   );
   map { $args->{$_} = $defaults{$_} unless defined $args->{$_} } keys %defaults;
 
@@ -431,11 +434,12 @@ sub binarize_subtree {
   my $unique   = $args->{unique};
   my $not_root = $args->{not_root};
   my $dir      = $args->{dir};
+  my $collapse = $args->{collapse};
 
   # base case: nothing more to do
   return unless $node->{numkids};
 
-  map { binarize_subtree({node=>$_,not_root=>1,unique=>$unique}) } @{$node->{children}};
+  map { binarize_subtree({node=>$_,dir=>$dir,not_root=>1,unique=>$unique,collapse=>$collapse}) } @{$node->{children}};
 
   # binarize to a right-branching structure
   while ($node->{numkids} > 2) {
@@ -449,9 +453,13 @@ sub binarize_subtree {
 #     $newnode->{label} = "<$node->{label}:$kidlabels>";  # :$id
 #     $newnode->{label} = "<$kidlabels>";  # :$id
 
-    $newnode->{label} = ($args->{collapse} eq "lhs")
-        ? "<$node->{label}:$kidlabels>"
-        : "<$kidlabels>";
+    if ($collapse eq "lhs") {
+      $newnode->{label} = "<$node->{label}:$kidlabels>";
+    } elsif ($collapse eq "@") {
+      $newnode->{label} = "\@$node->{label}";
+    } else {
+      $newnode->{label} = "<$kidlabels>";
+    }
 
 #     $newnode->{label} = "[$newnode->{label}]" if ($unique);
     $newnode->{numkids} = 2;
@@ -843,6 +851,25 @@ sub push_weights {
           $rules->{$rhs}{$lhs} /= ($shared_prob ** $numtimes);
 #           print " = $rules->{$rhs}{$lhs}\n";
     } @tops;
+  }
+}
+
+sub mark_spans {
+  my ($node,$index) = @_;
+  $index = 0 unless defined $index;
+
+  if (! @{$node->{children}}) {
+    $node->{i} = $index;
+    $node->{j} = $index;
+    return $index + 1;
+  } else {
+    my $old = $index;
+    map {
+      $index = mark_spans($_,$index)
+    } @{$node->{children}};
+    $node->{i} = $old;
+    $node->{j} = $index - 1;
+    return $index;
   }
 }
 
