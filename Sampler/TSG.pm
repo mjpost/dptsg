@@ -8,7 +8,7 @@ use vars qw|$VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS|;
 # our($lexicon,%rules,%deps,%PARAMS,$base_measure);
 
 @ISA = qw|Exporter Sampler|;
-@EXPORT = qw|sample_each_TSG|;
+@EXPORT = ();
 @EXPORT_OK = ();
 
 use strict;
@@ -43,6 +43,33 @@ sub new {
 
   # call parent
   my $self = $class->SUPER::new(%params);
+
+  # if "unordered" is requested, that means we treat the PCFG rules
+  # for the base measure as rewriting as multisets, so we need to
+  # collapse them here and renormalize them
+  if ($params{unordered}) {
+    # set probs for canonical forms of rules for base measure
+    my $before = scalar keys %{$self->{rules}};
+    $self->{rules} = {};
+    die "no rules passed in!" unless exists $params{rules};
+    my %lhs;
+    while (my ($rule,$weight) = each %{$params{rules}}) {
+      my ($lhs) = split(' ',$rule);
+      $lhs{$lhs} += $weight;
+
+      my $canon = tocanonical($rule);
+      $self->{rules}->{$canon} += $weight;
+    }
+    my $after = scalar keys %{$self->{rules}};
+
+    print "* canonicalization of base measure rules made $after rules from $before\n";
+
+    # normalize
+    while (my ($rule,$weight) = each %{$self->{rules}}) {
+      my ($lhs) = split(" ",$rule);
+      $self->{rules}->{$rule} = $weight / $lhs{$lhs};
+    }
+  }
 
   # create other variables
   # $self->{totals} = {};
@@ -85,25 +112,6 @@ sub count {
 
 my $debug = 0;
 my $loghandle;
-
-# sub sample_all {
-#   my ($self,$iter,@funcs) = @_;
-
-#   $self->{iter} = $iter;
-#   $self->{treeno} = 1;
-
-#   $| = 1;
-#   foreach my $tree (@{$self->{corpus}}) {
-#     print "ITER $iter TREE $self->{treeno} merges:$self->{merges} splits:$self->{splits} \n" 
-#         if $self->{verbosity} and (! ($self->{treeno} % 1000));
-
-#     map {
-#       $self->sample_each_TSG_recurse($_,$tree);
-#     } @{$tree->{children}};
-
-#     $self->{treeno}++;
-#   }
-# }
 
 sub sample_each_TSG {
   my ($node,$self,$topnode) = @_;
@@ -178,10 +186,10 @@ sub sample_each_TSG {
   # print "  - $outside_str ($prob_outside)\n";
   # print "  - $inside_str ($prob_inside)\n";
 
-  # if ($self->{log}) {
-  #   my $fh = $self->{log};
-  #   print $fh "$self->{treeno} $gorn $merge_prob $co $ci $cm $was_merged $merging\n";
-  # }
+  if (my $fh = $self->{logfh}) {
+    my $gorn = "";
+    print $fh "$self->{treeno} $gorn $prob_outside $prob_inside $prob_merged $was_merged $do_merge\n";
+  }
 
   if ($do_merge) {
     $self->{merges}++ unless $was_merged;
@@ -297,6 +305,40 @@ sub base_prob {
 
   my $pr = 1.0;
   foreach my $rule (@{$rep->{rules}}) {
+    my $form = $self->{unordered} ? tocanonical($rule) : $rule;
+
+    print " PROB($rule) = $self->{rules}->{$form}\n"
+        if $debug;
+    print "* WARNING: couldn't find rule '$form' in PCFG rules\n" unless exists $self->{rules}->{$form};
+    $pr *= $self->{rules}->{$form};
+  }
+#   print "PR is $pr after multiplying together $rep->{rulecount} rules\n";
+
+  my $prg = ((1.0 - $self->{stop}) ** ($numrules - 1)) * $self->{stop};
+
+  if ($verb) {
+    my $ps = $self->{stop};
+    my $ps2 = 1.0 - $ps;
+    my $rules = $numrules - 1;
+    # print "BASE_PROB() = $pr * $prg ($ps2 ** $numrules * $ps) = ", $pr * $prg,$/;
+  }
+
+  return $pr * $prg;
+}
+
+
+# Returns the base measure probability of the tree fragment.
+# This version
+sub base_prob_2 {
+  my ($self,$rep,$verb) = @_;
+
+  my $numrules = $rep->{rulecount};
+
+#   print "BASE_PROB: ", (scalar @{$rep->{rules}}), " rules:\n"
+#       if $debug;
+
+  my $pr = 1.0;
+  foreach my $rule (@{$rep->{rules}}) {
     print " PROB($rule) = $self->{rules}->{$rule}\n"
         if $debug;
     print "* WARNING: couldn't find rule '$rule' in PCFG rules\n" unless exists $self->{rules}->{$rule};
@@ -331,11 +373,29 @@ sub dump_counts {
   compress_files($file);
 }
 
+# takes a rule represented in paren form and transforms the RHS
+# as a multiset
+sub tocanonical {
+  my ($rule) = @_;
+
+  $rule =~ s/^\(|\)$//g;
+  die "multilevel rule! ($rule)" if ($rule =~ /[\(\)]/);
+  
+  my ($lhs,@rhs) = split(' ',$rule);
+  my $rhs = join(" ",sort(@rhs));
+
+  my $newrule = "($lhs $rhs)";
+
+  # print "CANON($rule) -> $newrule\n";
+
+  return $newrule;
+}
+
 # takes a node and recursively discovers the rules inside the subtree
 # rooted at that node
 sub rep {
   my ($node,$hash) = @_;
-  $hash = { label => $node->{label} } unless defined $hash;
+  $hash = { label => $node->{label}, lexcount => 0 } unless defined $hash;
 
   # update hash
   push @{$hash->{rules}}, ruleof($node,1);
@@ -359,9 +419,13 @@ sub rep {
       }
     }
   } else {
-    $hash->{str} .= " " . $node->{label};
+    my $sig = $node->{label};
+
+    $hash->{str} .= " $sig";
     $hash->{frontier} .= " " if $hash->{frontier};
-    $hash->{frontier} .= $node->{label};
+    $hash->{frontier} .= $sig;
+
+    $hash->{lexcount}++;
   }
 
   $hash->{str} .= ")";
