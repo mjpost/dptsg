@@ -26,13 +26,13 @@ sub lex {
 sub delex {
   my $arg = shift;
   # we don't want to remove underscores internal to a word
-  $arg =~ s/^_|_$//g;
+  $arg =~ s/^_|_$//g if islex($arg);
   return $arg;
 }
 
 sub islex {
   my $arg = shift;
-  my $islex = ($arg =~ /^_.*_$/) ? 1 : 0;
+  my $islex = ($arg =~ /^_.+_$/) ? 1 : 0;
   return $islex;
 }
 
@@ -168,6 +168,8 @@ sub signature {
   } else {
     $sig = classof($word,$pos);
   }
+
+#  print "SIGNATURE($argword) = $sig\n" unless $sig eq $argword;
 
   return $sig;
 }
