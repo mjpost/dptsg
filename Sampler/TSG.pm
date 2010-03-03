@@ -80,6 +80,20 @@ sub new {
   return $self;
 }
 
+# return the number of TSG rules by type
+sub types {
+  my ($self) = @_;
+
+  return scalar keys %rewrites;
+}
+
+# return the number of TSG rules by token
+sub tokens {
+  my ($self) = @_;
+
+  return sum values %rewrites;
+}
+
 # counts all of the rules in a tree by updating $hash
 # will also update a counter ($size reference) if available
 sub count {
