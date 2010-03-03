@@ -28,7 +28,8 @@ my %PARAMS = (
   log => 0,
   lexicon => "$basedir/data/lex.02-21",
   pcfg => "$basedir/data/pcfg_rules.prb",
-  thresh => 2,
+  '*unordered' => 0,  # whether RHS of PCFG should be considered unordered
+  thresh => 1,
   corpus => "$basedir/data/wsj.trees.02-21.clean",
   rundir => $ENV{PWD},
   dump => 1, # frequency with which to dump counts
@@ -66,12 +67,13 @@ while (my $line = <RULES>) {
   $rules{$rep} = $prb;
 }
 close RULES;
-print STDERR "done.\n";
+print STDERR "done (read " . (scalar keys %rules) . " rules).\n";
 
 $PARAMS{rules} = \%rules;
 
 my $PICKING_UP = 0;
 my $bzip = "/usr/bin/bzip2";
+$bzip = "$ENV{HOME}/bin/bzip2" if ! -e $bzip;
 
 # find the highest directory from a previous run
 opendir DIR, $PARAMS{rundir} or die "can't read files in rundir '$PARAMS{rundir}'";
@@ -140,22 +142,26 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
   }
 
   # log
-  open $sampler->{log}, ">log.$iter" if ($PARAMS{log});
+  open $sampler->{logfh}, ">log.$iter" if ($PARAMS{log});
 
   my $start_time = time;
-  $sampler->sample_all($iter,\&sample_each_TSG);
+
+  $sampler->sample_all($iter,$sampler->can('sample_each_TSG'));
 
 #   map { print "$counts{$_} '$_'\n" } (keys %counts);
   my $dur = time() - $start_time;
   my $nicedur = mytime($dur);
   mylog("ITERATION $iter took $dur seconds ($nicedur)",1);
-  mylog("ITERATION $iter splits:$sampler->{splits} merges:$sampler->{merges}",1);
+
+  my $types = $sampler->types();
+  my $tokens = $sampler->tokens();
+  mylog("ITERATION $iter splits:$sampler->{splits} merges:$sampler->{merges} types:$types tokens:$tokens",1);
 
 #   print "ITERATION stats ", (scalar keys %counts), " keys\n";
 #   my @newcorpus = map { build_tree_oneline($_) } @corpus;
 #   print "ITERATION size corpus ", total_size(\@newcorpus), " counts ", total_size(\%counts), $/;
 
-  close $sampler->{log} if ($PARAMS{log});
+  close $sampler->{logfh} if ($PARAMS{log});
 
   if ($PARAMS{dump} and ! ($iter % $PARAMS{dump})) {
     $sampler->dump_corpus($iter);
