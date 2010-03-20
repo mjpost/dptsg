@@ -32,6 +32,7 @@ my %PARAMS = (
   thresh => 1,
   corpus => "$basedir/data/wsj.trees.02-21.clean",
   rundir => $ENV{PWD},
+  two => 1,  # sample two nodes at a time
   dump => 1, # frequency with which to dump counts
   '*startover' => 0,
   srand => undef,
@@ -146,7 +147,11 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
 
   my $start_time = time;
 
-  $sampler->sample_all($iter,$sampler->can('sample_each_TSG'));
+  if ($PARAMS{two}) {
+    $sampler->sample_all($iter,$sampler->can('sample_two'));
+  } else {
+    $sampler->sample_all($iter,$sampler->can('sample_each_TSG'));
+  }
 
 #   map { print "$counts{$_} '$_'\n" } (keys %counts);
   my $dur = time() - $start_time;

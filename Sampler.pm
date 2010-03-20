@@ -65,8 +65,8 @@ sub sample_all {
 
   $| = 1;
   foreach my $tree (@{$self->{corpus}}) {
-    print "ITER $iter TREE $self->{treeno}\n" 
-        if $self->{verbosity} and (! ($self->{treeno} % 1000));
+    print "ITER $iter TREE $self->{treeno}\n"
+         if $self->{verbosity} and (! ($self->{treeno} % 1000));
 
     walk($tree, \@funcs, $self);
 
@@ -91,7 +91,7 @@ sub rand_transition {
 
 sub compress_files {
   my $bzip = "/usr/bin/bzip2";
-  map { system("$bzip -9 $_") } @_;
+  map { system("$bzip -9 -f $_") } @_;
 }
 
 sub dump_corpus {
@@ -140,6 +140,8 @@ sub random_multinomial {
     $which++;
     last if $which >= $len;
   }
+
+  # print "  RANDOM(" . join(",",map {$_/$total} @$list) . ") = $which\n";
 
   return $which;
 }

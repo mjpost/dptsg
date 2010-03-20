@@ -127,6 +127,215 @@ sub count {
 my $debug = 0;
 my $loghandle;
 
+# whether a node is marked as internal to a subtree
+sub is_internal {
+  my ($node) = @_;
+  return ($node->{label} =~ /^\*/) ? 1 : 0;
+}
+
+sub make_internal {
+  my ($node,$which) = @_;
+  $which = 1 unless defined $which;
+  if ($which) {  # make internal
+    # make internal unless it already is
+    $node->{label} = "*$node->{label}"
+        unless is_internal($node);
+  } else {  # make external
+    # make external if it is currently internal
+    $node->{label} =~ s/^\*//
+        if is_internal($node);
+  }
+}
+
+# samples two nodes at the same time for faster mixing
+sub sample_two {
+  my ($node,$self,$top) = @_;
+
+  # skip the root node and leaf nodes
+  return $node if $node->{label} eq "TOP";
+  return undef unless @{$node->{children}};
+
+  # print "SAMPLE_TWO($node->{label},$top->{label})\n";
+
+  my ($outside,$inside,$merged);
+
+  # choose a random child from the non-terminal children
+  my @available;
+  map { push(@available,$_) unless is_terminal($_) } @{$node->{children}};
+  return undef unless scalar(@available);
+  my $kid = $available[ rand(@available) ];
+
+  my @was_internal = (
+    is_internal($node),
+    is_internal($kid));
+
+  # print "NODE: $node->{label} ($was_internal[0]) KID: $kid->{label} ($was_internal[1])\n";
+
+  # the four hypotheses vary based on whether $node and $kid are marked; 
+  # to compute these hyps, we need the probability of 6 different pieces
+  # 1. reps[0][1][1] top through $node and $kid
+  # 2. reps[0][1][0] top through $node stopping at $kid
+  # 3. reps[0][0] top stopping at $node
+  # 4. reps[1][1] $node through $kid
+  # 5. reps[1][0] $node stopping at $kid
+  # 6. reps[2] $kid
+  my @reps;
+
+  use constant {
+    TOP => 0,
+    NODE => 1,
+    KID => 2,
+    BOTTOM => 3
+  };
+
+  my $current_state;
+  my $current_state_str = "$top->{label} $node->{label} $kid->{label}";
+  if ($was_internal[0] and $was_internal[1]) {
+    # three rules
+    $current_state = 3;
+  } elsif ($was_internal[0]) {
+    # two rules, break at kid
+    $current_state = 1;
+  } elsif ($was_internal[1]) {
+    # two rules, break at node
+    $current_state = 2;
+  } else {
+    # one rule
+    $current_state = 0;
+  }
+
+  # decrement the counts
+  decrement(\%rewrites, rep($top)->{str});
+  # print "  -" . rep($top)->{str} . $/;
+  if (! $was_internal[0]) {
+    decrement(\%rewrites, rep($node)->{str});
+    # print "  -" . rep($node)->{str} . $/;
+    decrement(\%totals,$node->{label});
+  }
+  if (! $was_internal[1]) {
+    decrement(\%rewrites, rep($kid)->{str});
+    # print "  -" . rep($kid)->{str} . $/;
+    decrement(\%totals,$kid->{label});
+  }
+
+  # now compute the rest of the six pieces
+  make_internal($node,1);
+  make_internal($kid, 1);
+  $reps[TOP][BOTTOM] = rep($top);
+
+  make_internal($node,1);
+  make_internal($kid, 0);
+  $reps[TOP][KID] = rep($top); 
+  $reps[KID][BOTTOM] = rep($kid); 
+
+  make_internal($node,0);
+  make_internal($kid, 1);
+  $reps[TOP][NODE] = rep($top);  
+  $reps[NODE][BOTTOM] = rep($node);  
+
+  make_internal($node,0);
+  make_internal($kid, 0);
+  $reps[NODE][KID] = rep($node);  
+
+  # compute the probabilities
+  # (0,0) all external
+  my @probs = (
+    # three separate rules
+    $self->prob($reps[TOP][BOTTOM])
+    * $self->prob($reps[NODE][KID])
+    * $self->prob($reps[KID][BOTTOM]),
+    # two rules, break at kid
+    $self->prob($reps[TOP][KID])
+    * $self->prob($reps[KID][BOTTOM]),
+    # two rules, break at node
+    $self->prob($reps[TOP][NODE])
+    * $self->prob($reps[NODE][BOTTOM]),
+    # one rule
+    $self->prob($reps[TOP][BOTTOM])
+      );
+
+  my $next_state = random_multinomial(\@probs);
+
+  # if (my $fh = $self->{logfh}) {
+  #   my $gorn = "";
+  #   print $fh "$self->{treeno} $gorn $prob_outside $prob_inside $prob_merged $was_merged $do_merge\n";
+  # }
+
+  if ($next_state == 0) {
+    # this state corresponds to three separate rules
+
+    # update counts
+    $rewrites{$reps[TOP][NODE]->{str}}++;
+    $rewrites{$reps[NODE][KID]->{str}}++;
+    $rewrites{$reps[KID][BOTTOM]->{str}}++;
+    $totals{$node->{label}}++;
+    $totals{$kid->{label}}++;
+
+    # update states
+    make_internal($node,0);
+    make_internal($kid,0);
+  } elsif ($next_state == 1) {
+    # two rules, break at kid
+    
+    # update counts
+    $rewrites{$reps[TOP][KID]->{str}}++;
+    $rewrites{$reps[KID][BOTTOM]->{str}}++;
+    $totals{$kid->{label}}++;
+
+    # update states
+    make_internal($node,1);
+    make_internal($kid,0);
+
+  } elsif ($next_state == 2) {
+    # two rules, break at node
+
+    # update counts
+    $rewrites{$reps[TOP][NODE]->{str}}++;
+    $rewrites{$reps[NODE][BOTTOM]->{str}}++;
+    $totals{$node->{label}}++;
+
+    # update states
+    make_internal($node,0);
+    make_internal($kid, 1);
+
+  } else { 
+    # one rule
+
+    # update counts
+    $rewrites{$reps[TOP][BOTTOM]->{str}}++;
+
+    # update states
+    make_internal($node,1);
+    make_internal($kid, 1);
+  }
+
+  # if ($current_state != $next_state) {
+  #   print "  FROM $current_state ($current_state_str) TO $next_state ($top->{label} $node->{label} $kid->{label})\n";
+  # } else {
+  #   print "  NO CHANGE\n";
+  # }
+
+  # print "  REWRITE COUNTS:\n";
+  # map { print  "    $_ $rewrites{$_}\n" } keys %rewrites;
+  # print "  LHS COUNTS:\n";
+  # map { print  "    $_ $totals{$_}\n"   } keys %totals;
+
+  ## sanity check
+  {
+    my %my_totals;
+    map { $my_totals{lhsof($_)} += $rewrites{$_} } keys %rewrites;
+    while (my ($key,$val) = each %my_totals) {
+      if ($totals{$key} != $val) {
+        die "BAD COUNT FOR $key (true $val, stored $totals{$key})\n";
+      }
+    }
+  }
+
+  # The same topnode will be the topnode for the children if $node
+  # remains an internal node; else, it will be the current node
+  return (is_internal($node)) ? $top : $node;
+}
+
 sub sample_each_TSG {
   my ($node,$self,$topnode) = @_;
 
@@ -246,8 +455,6 @@ sub prob {
   my $lhs = $rep->{label};
   my $rule = $rep->{str};
 
-  # print "PROB($rule)\n";
-
   # my $count = (exists $self->{rewrites}{$rule}) 
   #     ? $self->{rewrites}{$rule} : 0;
   my $count = (exists $rewrites{$rule}) 
@@ -277,7 +484,6 @@ sub prob {
     print "  NUM = $num\n";
     print "  DEN = $denom\n";
   }
-
 
   return $prob;
 }
@@ -330,12 +536,12 @@ sub base_prob {
 
   my $prg = ((1.0 - $self->{stop}) ** ($numrules - 1)) * $self->{stop};
 
-  if ($verb) {
-    my $ps = $self->{stop};
-    my $ps2 = 1.0 - $ps;
-    my $rules = $numrules - 1;
+  # if ($verb) {
+    # my $ps = $self->{stop};
+    # my $ps2 = 1.0 - $ps;
+    # my $rules = $numrules - 1;
     # print "BASE_PROB() = $pr * $prg ($ps2 ** $numrules * $ps) = ", $pr * $prg,$/;
-  }
+  # }
 
   return $pr * $prg;
 }
