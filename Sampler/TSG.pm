@@ -191,7 +191,7 @@ sub sample_two {
   my $current_state;
   my $current_state_str = "$top->{label} $node->{label} $kid->{label}";
   if ($was_internal[0] and $was_internal[1]) {
-    # three rules
+    # one rule
     $current_state = 3;
   } elsif ($was_internal[0]) {
     # two rules, break at kid
@@ -200,7 +200,7 @@ sub sample_two {
     # two rules, break at node
     $current_state = 2;
   } else {
-    # one rule
+    # three rules
     $current_state = 0;
   }
 
@@ -241,7 +241,7 @@ sub sample_two {
   # (0,0) all external
   my @probs = (
     # three separate rules
-    $self->prob($reps[TOP][BOTTOM])
+    $self->prob($reps[TOP][NODE])
     * $self->prob($reps[NODE][KID])
     * $self->prob($reps[KID][BOTTOM]),
     # two rules, break at kid
@@ -255,11 +255,6 @@ sub sample_two {
       );
 
   my $next_state = random_multinomial(\@probs);
-
-  # if (my $fh = $self->{logfh}) {
-  #   my $gorn = "";
-  #   print $fh "$self->{treeno} $gorn $prob_outside $prob_inside $prob_merged $was_merged $do_merge\n";
-  # }
 
   if ($next_state == 0) {
     # this state corresponds to three separate rules
@@ -309,7 +304,19 @@ sub sample_two {
     make_internal($kid, 1);
   }
 
+  # if (my $fh = $self->{logfh}) {
+  #   my $gorn = "";
+  #   print $fh "$self->{treeno} $gorn (" . join(",",@probs) . ") $current_state -> $next_state\n";
+  # }
+
   # if ($current_state != $next_state) {
+  #   print "  0: $reps[TOP][NODE]->{str} $reps[NODE][KID]->{str} $reps[KID][BOTTOM]->{str}\n";
+  #   print "  1: $reps[TOP][KID]->{str} $reps[KID][BOTTOM]->{str}\n";
+  #   print "  2: $reps[TOP][NODE]->{str} $reps[NODE][BOTTOM]->{str}\n";
+  #   print "  3: $reps[TOP][BOTTOM]->{str}\n";
+  #   my $sum = sum(@probs);
+  #   my @normalized_probs = map { $_ / $sum } @probs;
+  #   print "  SUMMARY $self->{treeno} (" . join(",",@normalized_probs) . ") $current_state -> $next_state\n";
   #   print "  FROM $current_state ($current_state_str) TO $next_state ($top->{label} $node->{label} $kid->{label})\n";
   # } else {
   #   print "  NO CHANGE\n";
@@ -321,15 +328,15 @@ sub sample_two {
   # map { print  "    $_ $totals{$_}\n"   } keys %totals;
 
   ## sanity check
-  {
-    my %my_totals;
-    map { $my_totals{lhsof($_)} += $rewrites{$_} } keys %rewrites;
-    while (my ($key,$val) = each %my_totals) {
-      if ($totals{$key} != $val) {
-        die "BAD COUNT FOR $key (true $val, stored $totals{$key})\n";
-      }
-    }
-  }
+  # {
+  #   my %my_totals;
+  #   map { $my_totals{lhsof($_)} += $rewrites{$_} } keys %rewrites;
+  #   while (my ($key,$val) = each %my_totals) {
+  #     if ($totals{$key} != $val) {
+  #       die "BAD COUNT FOR $key (true $val, stored $totals{$key})\n";
+  #     }
+  #   }
+  # }
 
   # The same topnode will be the topnode for the children if $node
   # remains an internal node; else, it will be the current node
