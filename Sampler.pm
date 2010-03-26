@@ -111,6 +111,12 @@ sub dump_counts {
   print "* WARNING: dump_counts() not implemented!\n";
 }
 
+# called once per iteration, allows classes to make sure that counts
+# are sane
+sub check_counts {
+  print "* WARNING: check_counts() not implemented\n";
+}
+
 sub read_base_grammar {
   my ($self,$file) = @_;
   open RULES, $file or die "can't read base grammar event probs file '$file'";

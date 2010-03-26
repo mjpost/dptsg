@@ -206,6 +206,7 @@ sub sample_two {
 
   # decrement the counts
   decrement(\%rewrites, rep($top)->{str});
+  decrement(\%totals, $top->{label});
   # print "  -" . rep($top)->{str} . $/;
   if (! $was_internal[0]) {
     decrement(\%rewrites, rep($node)->{str});
@@ -263,6 +264,7 @@ sub sample_two {
     $rewrites{$reps[TOP][NODE]->{str}}++;
     $rewrites{$reps[NODE][KID]->{str}}++;
     $rewrites{$reps[KID][BOTTOM]->{str}}++;
+    $totals{$top->{label}}++;
     $totals{$node->{label}}++;
     $totals{$kid->{label}}++;
 
@@ -274,6 +276,7 @@ sub sample_two {
     
     # update counts
     $rewrites{$reps[TOP][KID]->{str}}++;
+    $totals{$top->{label}}++;
     $rewrites{$reps[KID][BOTTOM]->{str}}++;
     $totals{$kid->{label}}++;
 
@@ -286,6 +289,7 @@ sub sample_two {
 
     # update counts
     $rewrites{$reps[TOP][NODE]->{str}}++;
+    $totals{$top->{label}}++;
     $rewrites{$reps[NODE][BOTTOM]->{str}}++;
     $totals{$node->{label}}++;
 
@@ -298,6 +302,7 @@ sub sample_two {
 
     # update counts
     $rewrites{$reps[TOP][BOTTOM]->{str}}++;
+    $totals{$top->{label}}++;
 
     # update states
     make_internal($node,1);
@@ -327,20 +332,21 @@ sub sample_two {
   # print "  LHS COUNTS:\n";
   # map { print  "    $_ $totals{$_}\n"   } keys %totals;
 
-  ## sanity check
-  # {
-  #   my %my_totals;
-  #   map { $my_totals{lhsof($_)} += $rewrites{$_} } keys %rewrites;
-  #   while (my ($key,$val) = each %my_totals) {
-  #     if ($totals{$key} != $val) {
-  #       die "BAD COUNT FOR $key (true $val, stored $totals{$key})\n";
-  #     }
-  #   }
-  # }
-
   # The same topnode will be the topnode for the children if $node
   # remains an internal node; else, it will be the current node
   return (is_internal($node)) ? $top : $node;
+}
+
+sub check_counts {
+  my %my_totals;
+  map { $my_totals{lhsof($_)} += $rewrites{$_} } keys %rewrites;
+  while (my ($key,$val) = each %my_totals) {
+    if ($totals{$key} != $val) {
+      print "* WARNING: failed sanity check for '$key' (true count $val, cached $totals{$key})\n";
+    }
+  }
+
+  return 1;
 }
 
 sub sample_each_TSG {
@@ -357,37 +363,35 @@ sub sample_each_TSG {
 
   my ($outside,$inside,$merged);
 
+  my $toplhs  = $topnode->{label};
+  my $nodelhs = $node->{label};
+  $nodelhs =~ s/^\*//;
+
   # is merged
   my $was_merged = ($node->{label} =~ /^\*/) ? 1 : 0;
   if ($was_merged) {
+    # build the representations
     $merged = rep($topnode);
-    $node->{label} =~ s/^\*//;
+    $node->{label} = $nodelhs;
     $outside = rep($topnode);
     $inside = rep($node);
 
-    # print "MINUS($merged_str)\n";
-
-    # decrement($self->{rewrites},$merged->{str});
+    # decrement the counts
     decrement(\%rewrites,$merged->{str});
+    decrement(\%totals,$toplhs);
 
-    # decrement($self->{totals},lhsof($merged_str));
   } else {
+    # build the representations
     $outside = rep($topnode);
     $inside = rep($node);
-    $node->{label} = '*' . $node->{label};
+    $node->{label} = "*$nodelhs";
     $merged = rep($topnode);
 
-    # print "MINUS($outside_str)\n";
-    # print "MINUS($inside_str)\n";
-
-    # decrement($self->{rewrites},$inside->{str});
-    # decrement($self->{rewrites},$outside->{str});
-    # decrement($self->{totals},$node->{label});
+    # decrease the counts
     decrement(\%rewrites,$inside->{str});
+    decrement(\%totals,$nodelhs);
     decrement(\%rewrites,$outside->{str});
-    decrement(\%totals,$node->{label});
-
-    # decrement($self->{totals},lhsof($outside_str));
+    decrement(\%totals,$toplhs);
   }
 
   my $outside_str = $outside->{str};
@@ -424,30 +428,24 @@ sub sample_each_TSG {
   if ($do_merge) {
     $self->{merges}++ unless $was_merged;
 
-    my $lhs = lhsof($merged_str);
-    # $self->{rewrites}{$merged_str}++;
     $rewrites{$merged_str}++;
+    $totals{$toplhs}++;
 
     # we need to make sure the current node is annotated with an
     # asterisk (indicating it's an internal node), and the asterisk is
     # not there if it was there before
-    $node->{label} = "*" . $node->{label} if $was_merged;
-  } else {
+    $node->{label} = "*$nodelhs";
+  } else {  # not merging
     $self->{splits}++ if $was_merged;
 
-    my $olhs = lhsof($outside_str);
-    my $ilhs = lhsof($inside_str);
-
-    # $self->{rewrites}{$outside_str}++;
-    # $self->{rewrites}{$inside_str}++;
-    # $self->{totals}{$ilhs}++;
     $rewrites{$outside_str}++;
+    $totals{$toplhs}++;
     $rewrites{$inside_str}++;
-    $totals{$ilhs}++;
+    $totals{$nodelhs}++;
 
     # we need to clear the asterisk, which is there now if it wasn't
     # there before
-    $node->{label} =~ s/^\*// unless $was_merged;
+    $node->{label} = $nodelhs;
   }
   
   # If we merged (or stayed merged), the same topnode will continue to

@@ -153,6 +153,14 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
     $sampler->sample_all($iter,$sampler->can('sample_each_TSG'));
   }
 
+  # sanity check
+  if ($sampler->check_counts()) {
+    print "ITERATION $iter passed sanity check.\n";
+  } else {
+    print "* FATAL: failed sanity check.\n";
+    exit;
+  }
+
 #   map { print "$counts{$_} '$_'\n" } (keys %counts);
   my $dur = time() - $start_time;
   my $nicedur = mytime($dur);
