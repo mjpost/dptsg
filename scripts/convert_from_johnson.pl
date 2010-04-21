@@ -24,9 +24,14 @@ while (my $line = <READ>) {
 }
 close READ;
 
-# a second argument queues leaving in the asterisks that mark TSG
-# internal nodes
-my $annotate = @ARGV;
+# subtree-internal nodes MUST be annotated to prevent an infinite
+# amount of recursion; for example, consider the rule 
+#   NP-4 -> @NP-2 DT-0
+# mapping to
+#   NP-4 -> (NP-4 (*NP-4 @NP-2 DT-0))
+# if the internal NP-4 is not marked, then the recursive call will
+# result in infinite expansion
+my $annotate = 1;
 
 my (%rules,%map);
 
@@ -40,6 +45,8 @@ while (my $line = <>) {
   my $tree = build_subtree($line);
 
   walk($tree,[\&unflatten]);
+
+  walk($tree,[\&remove_mark]);
 
   print build_subtree_oneline($tree,1), $/;
 }
@@ -89,4 +96,11 @@ sub unflatten {
       $node->{children} = $subtree->{children};
     }
   }
+}
+
+# removes markings denoting internal nodes
+sub remove_mark {
+  my ($node) = @_;
+
+  $node->{label} =~ s/^\*//;
 }
