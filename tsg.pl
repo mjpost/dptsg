@@ -1,6 +1,29 @@
 #!/usr/bin/perl
+# Matt Post <post@cs.rochester.edu>
 
-# Gibbs sampler for DOP with a Dirichlet process prior.
+# Gibbs sampler for learning a tree substitution grammar with a
+# Dirichlet process prior.  See 
+#
+# "Bayesian learning of a tree substitution grammar". Matt Post and
+# Daniel Gildea. ACL (short paper). Singapore.
+#
+# for more information.
+#
+# Sample usage:
+# tsg.pl -alpha 100 -stop 0.9 -lexicon lex -thresh 0 -corpus corpus -pcfg pcfg
+#
+# where 
+# - {alpha} and {stop} are hyperparameters to the DP prior
+# - {lexicon} determines the lexicon used to convert leaves to UNK tokens
+# - all words occuring fewer than {thresh} times (from the lexicon)
+#   are converted to an unknown word category
+# - {corpus} is the WSJ corpus, one parse tree per line, in parenthetical
+#   form, with the root node being TOP
+# - {pcfg} is the MLE depth-one PCFG grammar used in the base measure
+# 
+# Arguments can be passed as environment variables or command-line
+# arguments, with the latter overriding the former (and both
+# overriding code-supplied defaults).
 
 my $basedir;
 BEGIN {
@@ -10,8 +33,6 @@ BEGIN {
 
 use strict;
 use warnings;
-use threads;
-use threads::shared;
 use POSIX qw|strftime|;
 use List::Util qw|reduce min max|;
 use Memoize;
@@ -22,22 +43,23 @@ use TSG;
 
 # parameters (via environment variables and command-line params)
 my %PARAMS = (
-  alpha => 10,  # DP parameter
-  iters => 500,  # number of iterations
-  stop => 0.9, # stop prob for base geometric distribution
-  log => 0,
+  alpha => 10,    # DP parameter
+  iters => 500,   # number of iterations
+  stop => 0.9,    # stop prob for base geometric distribution
+  log => 0,   
   lexicon => "$basedir/data/lex.02-21",
   pcfg => "$basedir/data/pcfg_rules.prb",
   '*unordered' => 0,  # whether RHS of PCFG should be considered unordered
-  thresh => 1,
+  thresh => 1,     # threshold for converting words to UNKs
   corpus => "$basedir/data/wsj.trees.02-21.clean",
   rundir => $ENV{PWD},
   '*two' => 0,  # sample two nodes at a time
-  dump => 1, # frequency with which to dump counts
-  '*startover' => 0,
+  dump => 1,      # frequency with which to dump corpus and counts
+  '*startover' => 0,   # start over even if there are existing iters completed
   srand => undef,
   verbosity => 1 );
 
+# process command-line parameters
 process_params(\%PARAMS,\@ARGV,\%ENV);
 my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
 
@@ -56,7 +78,7 @@ my $loghandle;
 chdir $PARAMS{rundir} or die "couldn't chdir to '$PARAMS{rundir}'";
 
 # We need the PCFG rules in order to score fragments according to the
-# base model
+# base model, so read them in to pass them into the sampler
 my $pcfg_file = $PARAMS{pcfg};
 print STDERR "Reading PCFG rules...";
 open RULES, $pcfg_file or die "can't read PCFG rules file '$pcfg_file'";
@@ -72,11 +94,12 @@ print STDERR "done (read " . (scalar keys %rules) . " rules).\n";
 
 $PARAMS{rules} = \%rules;
 
+# find the highest directory from a previous run, and pick up from
+# there unless -startover was specified on the command line
 my $PICKING_UP = 0;
 my $bzip = "/usr/bin/bzip2";
 $bzip = "$ENV{HOME}/bin/bzip2" if ! -e $bzip;
 
-# find the highest directory from a previous run
 opendir DIR, $PARAMS{rundir} or die "can't read files in rundir '$PARAMS{rundir}'";
 my $iter = max(1, grep(/^\d+$/, readdir(DIR)));
 closedir DIR;
@@ -126,15 +149,21 @@ if ($iter == 1 || $PARAMS{startover}) {
   $iter++;
 }  
 
+# create the sampler, passing it the command line parameters (some of
+# which it might use), and set the corpus, which has been read in.
 my $sampler = new Sampler::TSG(%PARAMS);
 $sampler->corpus(\@corpus);
 $sampler->count();
 
 # print "saw $size events\n";
 
+# iterate until completion ($iter was set earlier, in case we picked
+# up from an existing run)
 for ( ; $iter <= $PARAMS{iters}; $iter++) {
   print "ITERATION $iter TIMESTAMP ", , $/;
 
+  # allows for easy kills when you don't know which process is running
+  # in the current dir and only want to kill that one
   my $stop_file = ".stop";
   if (-e $stop_file) {
     unlink($stop_file);
@@ -147,13 +176,19 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
 
   my $start_time = time;
 
+  # sample_all visits all nodes of all sentences in the corpus, and
+  # applies the function pointer passed to it to each of those nodes.
+  # Here, we pass it a function that considers either one or two nodes
+  # at a time, depending on the program arguments
   if ($PARAMS{two}) {
     $sampler->sample_all($iter,$sampler->can('sample_two'));
   } else {
     $sampler->sample_all($iter,$sampler->can('sample_each_TSG'));
   }
 
-  # sanity check
+  # sanity check -- put in place after a bug was discovered (we cache
+  # the LHS counts, and were not incrementing/decrementing them
+  # correctly)
   if ($sampler->check_counts()) {
     print "ITERATION $iter passed sanity check.\n";
   } else {
@@ -182,6 +217,8 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
   }
 }
 
+# obtains the appropriate filehandle for logging to, and logs the
+# message
 sub mylog {
   my ($msg,$stdout) = @_;
 
