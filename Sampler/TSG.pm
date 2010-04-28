@@ -1,3 +1,8 @@
+# Matt Post <post@cs.rochester.edu>
+
+# This package implements transitioning from conditional distributions
+# built over a DP prior, used in the Gibbs sampler.
+
 package Sampler::TSG;
 
 use strict;
@@ -29,6 +34,13 @@ use TSG;
 
 my (%rewrites,%totals);
 
+# constructor
+#
+# The main work of the constructor is in handling the base measure.
+# If the caller requests the unordered base measure, then we have to
+# do some post-processing on the base distribution grammar to make
+# equivalence classes out of PCFG rules whose righthand sides are the
+# same when viewed as a multiset.
 sub new {
   my ($class,@params) = @_;
 

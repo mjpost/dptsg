@@ -1,7 +1,18 @@
+# Matt Post <post@cs.rochester.edu>
+
+# This file contains a long list of functions for working with trees
+# in our internal representation.  This representation treats each
+# node as a hash table, with children listed as an array reference in
+# the value of the {children} key.
+#
+# The code also contains other utility functions for reading and
+# writing files, etc.
+
 package TSG;
 
 use strict;
 use Exporter;
+use List::Util qw|sum max min|;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
@@ -9,20 +20,30 @@ use vars qw|@ISA @EXPORT|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
-use Memoize;
-use List::Util qw|sum max min|;
-
+## VARIABLES
+# a list of invalid parts of speech, used by the prune() function
 my @INVALID_POS = qw[-NONE-]; # '' `` -RRB- -LRB-];
 
+# the lexicon and lexicon threshold, set in read_lexicon()
 my $LEXICON;
 my $LEXICON_THRESH;
 
+# lex(): puts a word into lexical representation (surrounded by _s).
+# See README.code for reasons why we need to do this (basically, since
+# our subtree representation may be a subtree fragment, we need a way
+# to distinguish terminals from nonterminals, both of which may be on
+# the leaves; and we can't assume that the sets are disjoint, because
+# they're not).
+#
+# lex("word") => "_word_"
 sub lex {
   my $arg = shift;
   return $arg if islex($arg);
   return "_" . $arg . "_";
 }
 
+# removes lexical annotations
+# delex("_word_") -> "word"
 sub delex {
   my $arg = shift;
   # we don't want to remove underscores internal to a word
@@ -30,6 +51,8 @@ sub delex {
   return $arg;
 }
 
+# returns true if the word is in lexical representation, false
+# otherwise
 sub islex {
   my $arg = shift;
   my $islex = ($arg =~ /^_.+_$/) ? 1 : 0;
@@ -55,7 +78,8 @@ sub pruneit {
   return $prune;
 }
 
-# takes a subtree and prunes bad nodes from it
+# takes a subtree and prunes bad nodes from it; used to remove trace
+# elements from trees as a preprocessing step
 sub prune {
   my $node = shift;
 
@@ -90,8 +114,9 @@ sub prune {
   $node;
 }
 
-# builds the rule (of arbitrary depth), but you can get the depth-one
-# rule with a second arg
+# builds the rule representation of a node (of arbitrary depth, if it's
+# the root of a large subtree).  Include a second argument if you want
+# just the depth-one rule, even if it's the root of a subtree.
 sub ruleof {
   my ($node,$stop) = @_;
 
@@ -117,6 +142,9 @@ sub ruleof {
   return $str;
 }
 
+# reads in the lexicon into a hash table
+# the lexicon has lines of the form
+# id lexeme count
 sub read_lexicon {
   my ($lex_file,$thresh) = @_;
   $LEXICON_THRESH = (defined $thresh) ? $thresh : 2;
@@ -132,6 +160,8 @@ sub read_lexicon {
   return $LEXICON;
 }
 
+
+# read parts of speech for each word (not often used)
 sub read_pos {
   my $pos_file = shift;
   my $POS = {};
@@ -147,6 +177,9 @@ sub read_pos {
   return $POS;
 }
 
+# determines the signature of a word.  A word's signature is either
+# the word itself or one of the UNK categories, based on the frequency
+# of the word and command-line options.
 sub signature {
   my ($word,$pos) = @_;
   $pos = -1 unless defined $pos;
@@ -174,6 +207,7 @@ sub signature {
   return $sig;
 }
 
+# turns a word into its UNK class.  Called by signature()
 sub classof {
   my ($word,$pos) = @_;
   $word = delex($word);
@@ -232,62 +266,14 @@ sub classof {
   return $sig;
 }
 
-# sub classof {
-#   my ($word) = @_;
-
-#   $word = delex($word);
-
-#   my $sig = "UNK";
-#   my $lowered = lc($word);
-
-#   if ($word =~ /^[A-Z]/) {
-#     if (lcfirst($word) eq $lowered) { # only 1st char is uppercase
-#       $sig .= "-INITC";
-#       $sig .= "-KNOWNLC" if exists $LEXICON->{$lowered};
-#     } else { 
-#       $sig .= "-CAPS"; 
-#     }
-#   } else { 
-#     if ($word ne $lowered) {
-#       $sig .= "-CAPS";
-#     } elsif ($word =~ /[A-Z]/) { 
-#       $sig .= "-LC"; 
-#     } 
-#   }
-
-#   $sig .= "-NUM" if ($word =~ /[0-9]/);
-#   $sig .= "-DASH" if ($word =~ /[-]/);
-
-#   my $len = length($word);
-#   if ($len >= 3 && $lowered =~ /s$/){
-#     $sig .= "-s" if !($lowered =~ /ss$/ || $lowered =~ /us$/ || $lowered =~ /is$/);
-#   }
-
-#   if ($len >= 5) {
-#     $sig .= "-ed", if ($lowered =~ /ed$/);
-#     $sig .= "-ing", if ($lowered =~ /ing$/);
-#     $sig .= "-ion", if ($lowered =~ /ion$/);
-#     $sig .= "-er", if ($lowered =~ /er$/);
-#     $sig .= "-est", if ($lowered =~ /est$/);
-#     $sig .= "-al", if ($lowered =~ /al$/);
-#     if ($lowered =~ /y$/){
-#       if ($lowered =~ /ly$/){ 
-#         $sig .= "-ly"; 
-#       } else { 
-#         if ($lowered =~ /ity$/) {  
-#           $sig .= "-ity"; 
-#         } else { 
-#           $sig .= "-y"; 
-#         } 
-#       }
-#     }
-#   }
-#   return $sig;
-# }
-
 # builds a tree structure from a one-line textual representation
 sub build_subtree {
   my ($line,$lexicon) = @_;
+
+  # minimal sanity check
+  if ($line !~ /^\(.*\)$/) {
+    return undef;
+  }
 
   $line =~ s/\(/ \(/g;
   $line =~ s/\)/ \) /g;
@@ -370,6 +356,9 @@ sub scrub_node {
   }
 }
 
+# takes a node and converts the subtree beneath it to a one line
+# textual representation. If a second argument is passed, the leaves
+# are stripped of the lexical markers (_s).
 sub build_subtree_oneline {
   my ($node,$delex) = @_;
 
@@ -403,6 +392,10 @@ sub escape {
   return $arg;
 }
 
+# extract_rules_subtree [deprecated]
+#
+# takes a node and a list reference, and recursively finds each
+# (depth-one) rule, adding it to the list.
 sub extract_rules_subtree {
   my $node = shift;
   my $rules = shift;
@@ -420,7 +413,15 @@ sub extract_rules_subtree {
   map { extract_rules_subtree($_,$rules) } @{$node->{children}};
 }
 
-# binarize a single subtree of arbitrary depth
+# binarize_subtree
+#
+# takes arguments as a hash: 
+# - node: the node that is the subtree root
+# - unique: annotate binarized nodes to uniquely identify the subtree rooted at them
+# - dir (left,right): type of binarization
+# - collapse (lhs,@): 
+# -- lhs: include LHS in binarization
+# -- @: prepend @ sign to binarized nodes (a la Berkeley binarization)
 sub binarize_subtree {
   my $args = shift;
   my %defaults = (
@@ -477,7 +478,9 @@ sub binarize_subtree {
   return $node;
 }
 
-# marks head child of each node
+# mark_heads
+#
+# annotate each node with its head child
 sub mark_heads {
   my ($node) = @_;
 
@@ -500,6 +503,10 @@ sub mark_heads {
   }
 }
 
+# mark_subtree_height
+#
+# annotate ach node with the maximum distance to any of the leaves in
+# its frontier
 sub mark_subtree_height {
   my $node = shift;
 
@@ -514,7 +521,9 @@ sub mark_subtree_height {
   return $node;
 }
 
-# counts terminals in a subtree.
+# count_subtree_lex
+#
+# counts the number of lexical items among the leaves of a subtree
 sub count_subtree_lex {
   my $subtree = shift;
 
@@ -532,6 +541,8 @@ sub extract_frontier {
   return join(" ", grep(!/^\(/, split(' ',$rep)));
 }
 
+# frontier
+# arg1: the node from which to search for the frontier
 sub frontier {
   my ($node) = @_;
 
@@ -548,6 +559,16 @@ sub count_subtree_frontier {
   return sum(map { count_subtree_frontier($_) } @{$subtree->{children}});
 }
 
+# walk_postorder, walk_preorder
+# 
+# Generic function for walking the nodes of a tree in depth-first
+# order.  At each node, all of the functions in {funcs} (an array
+# reference) are applied to the node, in order.  Each of these
+# functions receives the current node as well as whatever {rest} is.
+# 
+# walk_postorder: functions are called *after* the recursive call.
+# walk_preorder: functions are called *before* the recursive call.
+# walk: defaults to walk_preorder
 sub walk_postorder {
   my ($node,$funcs,$rest) = @_;
   # recurse
@@ -569,12 +590,18 @@ sub walk {
   return walk_preorder(@_);
 }
 
+# delex_node
+#
+# removes the lexical markers from the node label
 sub delex_node {
   my $node = shift;
-  $node->{head} = delex($node->{head}) if $node->{head};
+  $node->{label} = delex($node->{label}) if $node->{label};
 }
 
-sub delex_tree {
+# delex_subtree
+# 
+# removes lexical markers from all nodes in a subtree
+sub delex_subtree {
   my $node = shift;
   return walk($node,[\&delex_node]);
 }
@@ -588,11 +615,16 @@ sub lhsof {
   return $lhs;
 }
 
+# returns true if the node is a terminal
 sub is_terminal {
   my ($node) = @_;
-  return islex($node->{label});
+  if (! exists $node->{children} || (0 == scalar @{$node->{children}})) {
+    return 1;
+  }
+  return 0;
 }
 
+# returns true if the node is a preterminal
 sub is_preterminal {
   my ($node) = @_;
 
@@ -610,6 +642,12 @@ sub is_preterminal {
   return 0;
 }
 
+# process_params
+#
+# Takes the list of default parameters, the arguments list from the
+# command line, and the set of environment variables, and sets
+# parameters based on them.  Command-line arguments are given highest
+# priority; next, environment variables; finally, defaults.
 sub process_params {
   my ($PARAMS,$ARGV,$ENV) = @_;
   my %binary;   # params (starred) that don't take args, default to 0
@@ -650,7 +688,9 @@ sub process_params {
   }
 }
 
-# removes internal node marking
+# clean
+# 
+# removes marker that indicates nodes internal to a subtree
 sub clean {
   my ($label) = @_;
   $label =~ s/^\*//;
@@ -658,7 +698,9 @@ sub clean {
   return $label;
 }
 
-# adds a field in each child denoting its parent
+# mark_parent
+#
+# adds a field to each node pointing to its parent node
 sub mark_parent {
   my ($node) = @_;
   map { $_->{parent} = $node } @{$node->{children}};
@@ -675,185 +717,6 @@ sub bin_level {
   my $count = 0;
   $count++ while $lhs =~ /</g;
   return $count;
-}
-
-sub binarize_grammar {
-  my ($rulesarg,$collapse) = @_;
-
-  my (%rules,%pmap,%notdone,%counts,%rulemap);
-
-  # 1. count all frontier pairs, and map them to the rule they appear in
-  while (my ($rule,$prob) = each %$rulesarg) {
-#     print "RULE($rule) $prob\n";
-    my ($lhs,@leaves) = split(' ',$rule);
-    my $leaves = join(" ",@leaves);
-    if (@leaves > 2) {
-      $notdone{$lhs}{$leaves} = $prob;
-      map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
-      $rulemap{"$lhs $leaves"} = "$lhs $leaves";
-    } else {
-      $rules{join($;,@leaves)}{$lhs} = $prob;
-    }
-  }
-
-  # 2. greedily reduce pairs until no more remain
-  foreach my $lhs (keys %counts) {
-
-    while (scalar keys %{$notdone{$lhs}}) {
-      # find the max pair in each rule, binarize that
-      my %postponed;
-      foreach my $leaves (keys %{$notdone{$lhs}}) {
-        my @leaves = split(' ',$leaves);
-        my $bestpair = undef;
-        my $bestcount = 0;
-        my $bestpos = -1;
-        for my $i (1..$#leaves) {
-          my $pair = "$leaves[$i-1] $leaves[$i]";
-          my ($l,$r) = ($leaves[$i-1],$leaves[$i]);
-#           my $label = "<$lhs:$l:$r>";
-#           my $label = "<$l:$r>";
-          my $label = ($collapse eq "lhs")
-              ? "<$lhs:$l:$r>"
-              : "<$l:$r>";
-          # only allow a particular binarization to occur once per rule
-          if ($counts{$lhs}{$l,$r} > $bestcount) { # && ! exists $pmap{"$lhs $leaves"}{"$label $l $r"}) {
-            $bestcount = $counts{$lhs}{$l,$r};
-            $bestpair = $pair;
-            $bestpos = $i;
-          }
-        }
-
-#         print "RULE($lhs $leaves)\n";
-#         print "  BEST($bestpos,$bestpair,$bestcount)\n";
-
-        # subtract all the counts
-        map { $postponed{$leaves[$_-1],$leaves[$_]}-- } (1..$#leaves);
-#          map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}-- } (1..$#leaves);
-
-        # make the replacement
-        my ($l,$r) = split(' ',$bestpair);
-#         my $label = "<$lhs:$l:$r>";
-#         my $label = "<$l:$r>";
-        my $label = ($collapse eq "lhs")
-            ? "<$lhs:$l:$r>"
-            : "<$l:$r>";
-
-        # create new rule, and adjust the list of binarized rules used
-        # by the top-level parent (which now has a new name)
-        $rules{$l,$r}{$label} = 1.0;  # record the rule
-        splice(@leaves,$bestpos-1,2,($label)); # insert binarized rule
-        my $newleaves = join(" ",@leaves); # new leaves string
-        $pmap{"$lhs $newleaves"} = $pmap{"$lhs $leaves"}; # rename parent
-        delete $pmap{"$lhs $leaves"}; # delete old parent
-        $pmap{"$lhs $newleaves"}{"$label $l $r"}++; # count new child
-        
-        # update the map between the original rule and its top-level
-        # binarized piece
-        if ($newleaves ne $leaves) {
-          $rulemap{"$lhs $newleaves"} = $rulemap{"$lhs $leaves"};
-          delete $rulemap{"$lhs $leaves"};
-        }
-
-        # increment the counts
-        map { $postponed{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
-#         map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
-
-        # update
-        my $prob = $notdone{$lhs}{$leaves};
-        delete $notdone{$lhs}{$leaves};
-        if (@leaves > 2) {
-          $notdone{$lhs}{join(" ",@leaves)} = $prob;
-        } elsif (@leaves == 2) {
-#           print "TOP($lhs -> $newleaves) = $prob\n";
-          $rules{join($;,@leaves)}{$lhs} = $prob;
-        }
-      }
-
-        # update counts if we're not done
-      if (scalar keys %{$notdone{$lhs}}) {
-        map { $counts{$lhs}{$_} += $postponed{$_} } keys %postponed;
-      }
-    }
-  }
-
-  # debugging
-#   while (my ($parent,$hash) = each %pmap) {
-#     print "PARENT RULE: $rulemap{$parent}\n";
-#     my ($lhs,@rhs) = split(' ',$parent);
-#     my $rhs = join($;,@rhs);
-#     my $prob = $rules{$rhs}{$lhs};
-#     print "  $parent ($prob)\n";
-#     while (my ($key,$prob) = each %{$pmap{$parent}}) {
-#       print "  $key ($prob)\n";
-#     }
-#   }
-
-  # convert the pmap (where a parent rule lists all of the binarized
-  # pieces it was turned into) into the binmap (in which each binary
-  # segment points to all of the parent rules it is part of)
-  my %binmap;
-  foreach my $rule (keys %pmap) {
-    # each binary rule points to its parent, and its value is the
-    # number of times it appears beneath that parent
-    map { $binmap{$_}{$rule} = $pmap{$rule}{$_} } keys %{$pmap{$rule}};
-#     map { $binmap{$_}{$rule} = 1.0 } keys %{$pmap{$rule}};
-  }
-
-  return (\%rules,\%binmap,\%rulemap);
-}
-
-# takes a binarized grammar and pushes the probability mass down as
-# far as possible
-sub push_weights {
-  my ($bin_map,$rules,$rulemap,$method) = @_;
-
-  # 1. sort the LHSs topologically
-  my @binrules = sort { bin_level($a) <=> bin_level($b) } keys %$bin_map;
-  
-  # 2. process each lhs
-  foreach my $binrule (@binrules) {
-#      print "BINRULE: '$binrule'\n";
-
-    # 2a. determine min prob of top-level rules sharing this bin piece
-    my ($lhs,@rhs) = split(' ',$binrule);
-    my @tops = keys %{$bin_map->{$binrule}};
-    my $shared_prob = 
-        max( map { my ($lhs,@rhs) = split ' ', $_;
-                   my $rhs = join($;,@rhs);
-                   my $numtimes = $bin_map->{$binrule}{$_}; # num times appears
-                   if ($method eq "nthroot" and defined $rulemap) {
-                     my $fullrule = $rulemap->{join(' ',$lhs,@rhs)};
-#                      print "FULLRULE($lhs @rhs) = $fullrule\n";
-                     my @nts = split(' ',$fullrule);
-                     my $n = @nts - 2;
-#                    print "  TOP($_) = $lhs -> $rhs ($rules->{$rhs}{$lhs})\n";
-                     $rules->{$rhs}{$lhs} ** (1.0/$numtimes/$n);
-                   } else {
-                     $rules->{$rhs}{$lhs} ** (1.0/$numtimes);
-                   }
-               }
-             @tops);
-#         max( map { my ($lhs,@rhs) = split ' ', $_;
-#                    my $rhs = join($;,@rhs);
-# #                    print "  TOP($_) = $lhs -> $rhs ($rules->{$rhs}{$lhs})\n";
-#                    $rules->{$rhs}{$lhs} } 
-#              @tops);
-
-#      print "NEW PROB($binrule) = $shared_prob\n";
-
-    # 2b. assign (some function of) this prob to the bin piece
-    my $rhs = join($;,@rhs);
-    $rules->{$rhs}{$lhs} = $shared_prob;
-
-    # 2c. divide out that prob from top-level rules sharing this bin piece
-    map { my ($lhs,@rhs) = split ' ', $_;
-          my $rhs = join($;,@rhs);
-          my $numtimes = $bin_map->{$binrule}{$_}; # num times appears
-#           print "  PARENT PROB($_) = $rules->{$rhs}{$lhs} / $shared_prob ** $numtimes";
-          $rules->{$rhs}{$lhs} /= ($shared_prob ** $numtimes);
-#           print " = $rules->{$rhs}{$lhs}\n";
-    } @tops;
-  }
 }
 
 sub mark_spans {

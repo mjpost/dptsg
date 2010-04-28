@@ -116,7 +116,8 @@ if ($iter == 1 || $PARAMS{startover}) {
 
     my $tree = build_subtree($line,$lexicon);
 
-    push @corpus, $tree;
+    push(@corpus, $tree)
+        if defined $tree;
   }
   close CORPUS;
   print STDERR "done.\n";
@@ -139,7 +140,8 @@ if ($iter == 1 || $PARAMS{startover}) {
     chomp $line;
 
     my $tree = build_subtree($line,$lexicon);
-    push @corpus, $tree;
+    push(@corpus, $tree)
+        if defined $tree;
   }
   close CORPUS;
   if (-e $corpus and ! -e "${corpus}.bz2") {

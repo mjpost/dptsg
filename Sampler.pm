@@ -1,3 +1,11 @@
+# Matt Post <post@cs.rochester.edu>
+
+# This file contains the Sampler package, a base class defining
+# features common to different Gibbs samplers on treebanks.  It is
+# general enough to support two subclasses: the TSG inference
+# described in Post & Gildea (2008) [Sampler/TSG.pm], and work in
+# progress for inducing grammars from raw text [Sampler/Learner.pm].
+
 package Sampler;
 
 use strict;
@@ -25,11 +33,14 @@ BEGIN {
   unshift @INC, $basedir;
 }
 
+# import common subtree operations and other support functions
 use TSG;
 
+# constructor
 sub new {
   my $class = shift;
   my %params = @_;
+  # default values
   my $self = { 
     iters => 100,
     stop => 1.0 - 1e-5,
@@ -44,6 +55,7 @@ sub new {
   return $self;
 }
 
+# sets the corpus (expects a list reference)
 sub corpus {
   my ($self,$corpus) = @_;
   $self->{corpus} = $corpus;
@@ -56,7 +68,11 @@ sub count {
 my $debug = 0;
 my $loghandle;
 
-# visits each node in the corpus and makes random sampling decisions
+# sample_all
+# 
+# Calls walk() on each tree in the corpus, passing along any functions
+# that are given to it.  This function is the entry point for the
+# Gibbs sampler.
 sub sample_all {
   my ($self,$iter,@funcs) = @_;
 
@@ -74,8 +90,14 @@ sub sample_all {
   }
 }
 
-# decrements the value of a key in a hash, deleting the key if the
-# count reaches 0
+# decrement
+#
+# Decrements the value of a key in a hash, deleting the key if the
+# count reaches 0.  The deletion is done to save on memory, since the
+# sampler may be creating and deleting many different keys.  This
+# proves essential to running within reasonable amounts of memory (and
+# not consuming the machine's entire memory due to the long tail of
+# potential subtrees).
 sub decrement {
   my ($hash,$key) = @_;
   if (exists $hash->{$key}) {
@@ -84,16 +106,26 @@ sub decrement {
   }
 }
 
+# rand_transition
+#
+# Make a binary decision based on a probability.  The argument is the
+# probability of TRUE.
 sub rand_transition {
   my $prob = shift;
   return (rand() < $prob) ? 1 : 0;
 }
 
+# compress_files
+#
+# Uses bzip to compress a list of files (given in @_)
 sub compress_files {
   my $bzip = "/usr/bin/bzip2";
   map { system("$bzip -9 -f $_") } @_;
 }
 
+# dump_corpus
+#
+# Dumps the corpus of trees to disk.
 sub dump_corpus {
   my ($self,$dir) = @_;
   mkdir $dir unless -d $dir;
@@ -107,30 +139,27 @@ sub dump_corpus {
   compress_files($file);
 }
 
+# dump_counts
+#
+# Dumps the event counts to disk.  This must be defined on a
+# class-by-class basis.
 sub dump_counts {
   print "* WARNING: dump_counts() not implemented!\n";
 }
 
-# called once per iteration, allows classes to make sure that counts
-# are sane
+# check_counts
+#
+# This is called once per iteration, at the end of the iteration, and
+# allows for sanity checks.
 sub check_counts {
   print "* WARNING: check_counts() not implemented\n";
 }
 
-sub read_base_grammar {
-  my ($self,$file) = @_;
-  open RULES, $file or die "can't read base grammar event probs file '$file'";
-  while (my $line = <RULES>) {
-    chomp($line);
-    my ($label,$stop_prob,$num_rhs,%rhs) = split(' ',$line);
-    $self->{stops}{$label}  = $stop_prob;
-    $self->{pairs}{$label} = \%rhs;
-  }
-  close RULES;
-}
+# random_multinomial
+#
+# Receives a list of numbers and randomly chooses one according to
+# their normalized frequencies.
 
-# returns a random element from the array in proportion to the value
-# of those elements
 sub random_multinomial {
   my ($list) = @_;
 
