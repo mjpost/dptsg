@@ -271,7 +271,7 @@ sub build_subtree {
   my ($line,$lexicon) = @_;
 
   # minimal sanity check
-  if ($line !~ /^\(.*\)$/) {
+  if ($line !~ /^\(.*\)\s*$/) {
     return undef;
   }
 
