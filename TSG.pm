@@ -16,7 +16,7 @@ use List::Util qw|sum max min|;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
-@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_rules_subtree signature classof mark_spans mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads binarize_grammar binarize_subtree push_weights|;
+@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_subtrees extract_rules_subtree signature classof mark_spans mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads binarize_grammar binarize_subtree push_weights|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
@@ -320,8 +320,9 @@ sub build_subtree {
       $top->{depth} = 1 + max(map { $_->{depth} } @{$top->{children}});
 
     } else { ### leaf (also new node)
+
       $c = {};
-      $c->{label} = $lexicon ? lex(signature($token)) : lex($token);
+      $c->{label} = $lexicon ? lex(signature($token)) : $token;
       $c->{word} = $token;
       $c->{children} = [];
       $c->{numkids} = 0;
@@ -391,6 +392,35 @@ sub escape {
   $arg =~ s/\|/\\\|/g;
   return $arg;
 }
+
+# is_internal
+#
+# returns true if the node is internal to a subtree, false otherwise
+sub is_internal {
+  my ($node) = @_;
+
+  return ($node->{label} =~ /^\*/) ? 1 : 0;
+}
+
+# extract_subtrees
+#
+# takes a tree or subtree and extracts all the subtrees found in it,
+# adding them to the list passed to it
+sub extract_subtrees {
+  my ($node,$list) = @_;
+
+  # base case -- child
+  return unless $node->{numkids};
+
+  # root of subtree
+  if (! is_internal($node)) {
+    push(@$list,ruleof($node));
+  }
+
+  # recursive call
+  map { extract_subtrees($_,$list) } @{$node->{children}};
+}
+
 
 # extract_rules_subtree [deprecated]
 #
@@ -736,6 +766,132 @@ sub mark_spans {
     $node->{j} = $index - 1;
     return $index;
   }
+}
+
+# binarizes a grammar using the greedy substring-matching binarization
+# approach
+sub binarize_grammar {
+  my ($rulesarg) = @_;
+
+  my (%rules,%pmap,%notdone,%counts,%rulemap);
+
+  # 1. count all frontier pairs, and map them to the rule they appear in
+  while (my ($rule,$prob) = each %$rulesarg) {
+#     print "RULE($rule) $prob\n";
+    my ($lhs,@leaves) = split(' ',$rule);
+    my $leaves = join(" ",@leaves);
+    if (@leaves > 2) {
+      $notdone{$lhs}{$leaves} = $prob;
+      map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
+      $rulemap{"$lhs $leaves"} = "$lhs $leaves";
+    } else {
+      $rules{join($;,@leaves)}{$lhs} = $prob;
+    }
+  }
+
+  # 2. greedily reduce pairs until no more remain
+  foreach my $lhs (keys %counts) {
+
+    while (scalar keys %{$notdone{$lhs}}) {
+      # find the max pair in each rule, binarize that
+      my %postponed;
+      foreach my $leaves (keys %{$notdone{$lhs}}) {
+        my @leaves = split(' ',$leaves);
+        my $bestpair = undef;
+        my $bestcount = 0;
+        my $bestpos = -1;
+        for my $i (1..$#leaves) {
+          my $pair = "$leaves[$i-1] $leaves[$i]";
+          my ($l,$r) = ($leaves[$i-1],$leaves[$i]);
+#           my $label = "<$lhs:$l:$r>";
+#           my $label = "<$l:$r>";
+          my $label = "$l:$r";
+          # only allow a particular binarization to occur once per rule
+          if ($counts{$lhs}{$l,$r} > $bestcount) { # && ! exists $pmap{"$lhs $leaves"}{"$label $l $r"}) {
+            $bestcount = $counts{$lhs}{$l,$r};
+            $bestpair = $pair;
+            $bestpos = $i;
+          }
+        }
+
+#         print "RULE($lhs $leaves)\n";
+#         print "  BEST($bestpos,$bestpair,$bestcount)\n";
+
+        # subtract all the counts
+        map { $postponed{$leaves[$_-1],$leaves[$_]}-- } (1..$#leaves);
+#          map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}-- } (1..$#leaves);
+
+        # make the replacement
+        my ($l,$r) = split(' ',$bestpair);
+#         my $label = "<$lhs:$l:$r>";
+#         my $label = "<$l:$r>";
+        my $label = "$l:$r";
+
+        # create new rule, and adjust the list of binarized rules used
+        # by the top-level parent (which now has a new name)
+        $rules{$l,$r}{$label} = 1.0;  # record the rule
+        splice(@leaves,$bestpos-1,2,($label)); # insert binarized rule
+        my $newleaves = join(" ",@leaves); # new leaves string
+        $pmap{"$lhs $newleaves"} = $pmap{"$lhs $leaves"}; # rename parent
+        delete $pmap{"$lhs $leaves"}; # delete old parent
+        $pmap{"$lhs $newleaves"}{"$label $l $r"}++; # count new child
+        
+        # update the map between the original rule and its top-level
+        # binarized piece
+        if ($newleaves ne $leaves) {
+          $rulemap{"$lhs $newleaves"} = $rulemap{"$lhs $leaves"};
+          delete $rulemap{"$lhs $leaves"};
+        }
+
+        # increment the counts
+        map { $postponed{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
+#         map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
+
+        # update
+        my $prob = $notdone{$lhs}{$leaves};
+        delete $notdone{$lhs}{$leaves};
+        if (@leaves > 2) {
+          $notdone{$lhs}{join(" ",@leaves)} = $prob;
+        } elsif (@leaves == 2) {
+#           print "TOP($lhs -> $newleaves) = $prob\n";
+          $rules{join($;,@leaves)}{$lhs} = $prob;
+        }
+      }
+
+        # update counts if we're not done
+      if (scalar keys %{$notdone{$lhs}}) {
+        map { $counts{$lhs}{$_} += $postponed{$_} } keys %postponed;
+      }
+    }
+  }
+
+  # debugging
+#   while (my ($parent,$hash) = each %pmap) {
+#     print "PARENT RULE: $rulemap{$parent}\n";
+#     my ($lhs,@rhs) = split(' ',$parent);
+#     my $rhs = join($;,@rhs);
+#     my $prob = $rules{$rhs}{$lhs};
+#     print "  $parent ($prob)\n";
+#     while (my ($key,$prob) = each %{$pmap{$parent}}) {
+#       print "  $key ($prob)\n";
+#     }
+#   }
+
+  # convert the pmap (where a parent rule lists all of the binarized
+  # pieces it was turned into) into the binmap (in which each binary
+  # segment points to all of the parent rules it is part of)
+  my %pieces_to_parents;
+  foreach my $rule (keys %pmap) {
+    # each binary rule points to its parent, and its value is the
+    # number of times it appears beneath that parent
+    map { $pieces_to_parents{$_}{$rule} = $pmap{$rule}{$_} } keys %{$pmap{$rule}};
+#     map { $binmap{$_}{$rule} = 1.0 } keys %{$pmap{$rule}};
+  }
+
+  # rules: the binarized rules { rhs => { lhs => prob } }
+  # pieces_to_parents: maps binarized rule pieces to original parent
+  # rulemap: maps original rules to their new top-level piece
+  return (\%rules,\%pieces_to_parents,\%rulemap);
 }
 
 1;
