@@ -595,6 +595,28 @@ sub base_prob_2 {
   return $pr * $prg;
 }
 
+sub likelihood {
+  my ($self) = @_;
+
+  my $sum = 0.0;
+  foreach my $tree (@{$self->{corpus}}) {
+    my @rules;
+    extract_subtrees($tree,\@rules);
+    my $prod = 1.0;
+    foreach my $rule (@rules) {
+      if (exists $totals{rule}) {
+        $prod *= 1.0 * $rewrites{$rule} / $totals{lhsof($rule)};
+      } else {
+        print STDERR "* WARNING: likelihood() found no rule '$rule'\n";
+      }
+    }
+    
+    $sum += log($prod);
+  }
+
+  return $sum / log(2.0);
+}
+
 sub dump_counts {
   my ($self,$dir) = @_;
   mkdir $dir unless -d $dir;
