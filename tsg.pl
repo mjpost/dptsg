@@ -53,7 +53,7 @@ my %PARAMS = (
   thresh => 1,     # threshold for converting words to UNKs
   corpus => "$basedir/data/wsj.trees.02-21.clean",
   rundir => $ENV{PWD},
-  '*two' => 0,  # sample two nodes at a time
+  '*two' => 0,  # sample two nodes every {two}th iter (empty arg = 1)
   dump => 1,      # frequency with which to dump corpus and counts
   '*startover' => 0,   # start over even if there are existing iters completed
   srand => undef,
@@ -111,7 +111,7 @@ if ($iter == 1 || $PARAMS{startover}) {
   open CORPUS, $PARAMS{corpus} or die "can't open corpus '$PARAMS{corpus}'";
   while (my $line = <CORPUS>) {
     chomp $line;
-    next if $line =~ /^$/;
+    next if $line =~ /^$/; 
     $sentno++;
 
     my $tree = build_subtree($line,$lexicon);
@@ -182,7 +182,7 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
   # applies the function pointer passed to it to each of those nodes.
   # Here, we pass it a function that considers either one or two nodes
   # at a time, depending on the program arguments
-  if ($PARAMS{two}) {
+  if ($PARAMS{two} && !($iter % $PARAMS{two})) {
     $sampler->sample_all($iter,$sampler->can('sample_two'));
   } else {
     $sampler->sample_all($iter,$sampler->can('sample_each_TSG'));
@@ -206,6 +206,9 @@ for ( ; $iter <= $PARAMS{iters}; $iter++) {
   my $types = $sampler->types();
   my $tokens = $sampler->tokens();
   mylog("ITERATION $iter splits:$sampler->{splits} merges:$sampler->{merges} types:$types tokens:$tokens",1);
+
+  my $likelihood = $sampler->likelihood();
+  mylog("ITERATION $iter log likelihood $likelihood");
 
 #   print "ITERATION stats ", (scalar keys %counts), " keys\n";
 #   my @newcorpus = map { build_tree_oneline($_) } @corpus;
