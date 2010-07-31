@@ -6,5 +6,5 @@ while ($line = <>) {
   chomp $line;
 
   my @matches = ($line =~ /\(/g);
-  print +(scalar @matches / 2) . " $line\n";
+  print +(scalar @matches) . " $line\n";
 }
