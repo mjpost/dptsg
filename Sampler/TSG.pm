@@ -420,8 +420,23 @@ sub sample_each_TSG {
   }
 
   # compute relative probability of merged vs. inside + outside
-  my $prob_inside = $self->prob($inside);
   my $prob_outside = $self->prob($outside);
+  my $prob_inside;
+  if ($outside->{label} eq $inside->{label}) {
+    my $lhs = $outside->{label};
+    $totals{$lhs}++;
+    if ($outside->{str} eq $inside->{str}) {
+      my $str = $outside->{str};
+      $rewrites{$str}++;
+      $prob_inside = $self->prob($inside);
+      decrement(\%rewrites, $str);
+    } else {
+      $prob_inside = $self->prob($inside);
+    }
+    decrement(\%totals, $lhs);
+  } else {
+    $prob_inside = $self->prob($inside);
+  }
   my $prob_merged = $self->prob($merged);
 
   # transition with that possibility
@@ -604,14 +619,20 @@ sub likelihood {
     extract_subtrees($tree,\@rules);
     my $prod = 1.0;
     foreach my $rule (@rules) {
-      if (exists $totals{rule}) {
-        $prod *= 1.0 * $rewrites{$rule} / $totals{lhsof($rule)};
-      } else {
-        print STDERR "* WARNING: likelihood() found no rule '$rule'\n";
-      }
+      $prod *= 1.0 * $rewrites{$rule} / $totals{lhsof($rule)};
     }
     
-    $sum += log($prod);
+    if ($prod <= 0.0) {
+      print STDERR "Bad likelihood on sentence $self->{treeno}\n";
+      print STDERR build_subtree_oneline($tree) . $/;
+
+      foreach my $rule (@rules) {
+        print STDERR "  RULE: $rule ($rewrites{$rule} / " . $totals{lhsof($rule)} . ") = " . ($rewrites{$rule} / $totals{lhsof($rule)}) . $/;
+      }
+    } else {
+      $sum += log($prod);
+    }
+
   }
 
   return $sum / log(2.0);
