@@ -12,10 +12,17 @@ use TSG;
 
 # load the map
 
+my %PARAMS = (
+  'map' => undef,     # map file
+  'scrub' => 1,       #
+  'delex' => 1,
+);
+process_params(\%PARAMS,\@ARGV,\%ENV);
+
 my %rule_mapping;
 
-my $map_file = shift @ARGV;
-open READ, $map_file or die "can't open file $map_file";
+my $map_file = $PARAMS{map};
+open READ, $map_file or die "can't open map file '$map_file'";
 while (my $line = <READ>) {
   chomp($line);
   my ($flat,$full) = split(/ \|\|\| /,$line);
@@ -46,9 +53,10 @@ while (my $line = <>) {
 
   walk($tree,[\&unflatten]);
 
-  walk($tree,[\&remove_mark]);
+  walk($tree,[\&remove_mark])
+    if ($PARAMS{scrub});
 
-  print build_subtree_oneline($tree,1), $/;
+  print build_subtree_oneline($tree,$PARAMS{delex}), $/;
 }
 
 sub substitute_subtree {
