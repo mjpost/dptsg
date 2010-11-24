@@ -16,7 +16,7 @@ use List::Util qw|sum max min|;
 use vars qw|@ISA @EXPORT|;
 
 @ISA = qw|Exporter|;
-@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_subtrees extract_rules_subtree signature classof mark_spans mark_subtree_height count_subtree_lex count_subtree_frontier prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads binarize_grammar binarize_subtree push_weights|;
+@EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_subtrees extract_rules_subtree signature classof mark_spans mark_subtree_height count_subtree_lex count_subtree_frontier count_subtree_nodes prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads binarize_grammar binarize_subtree push_weights|;
 
 require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
 
@@ -242,9 +242,10 @@ sub classof {
   if ($hasDigit) {
     $sig .= "-NUM";
   }
-  if ($hasDash) {
-    $sig .= "-DASH";
-  }
+  # 2010-08-18 removed this since it is rare and mostly causes problems
+  # if ($hasDash) {
+  #   $sig .= "-DASH";
+  # }
 
   if ($len >= 3 && $lowered =~ /s$/){
     $sig .= "-s" if !($lowered =~ /ss$/ || $lowered =~ /us$/ || $lowered =~ /is$/);
@@ -551,6 +552,15 @@ sub mark_subtree_height {
   return $node;
 }
 
+# count_nodes
+#
+# counts the number of nodes in a subtree
+sub count_subtree_nodes {
+  my $subtree = shift;
+
+  return 1 + sum(map {count_subtree_nodes($_)} @{$subtree->{children}});
+}
+
 # count_subtree_lex
 #
 # counts the number of lexical items among the leaves of a subtree
@@ -783,10 +793,10 @@ sub binarize_grammar {
     if (@leaves > 2) {
       $notdone{$lhs}{$leaves} = $prob;
       map { $counts{$lhs}{$leaves[$_-1],$leaves[$_]}++ } (1..$#leaves);
-      $rulemap{"$lhs $leaves"} = "$lhs $leaves";
     } else {
       $rules{join($;,@leaves)}{$lhs} = $prob;
     }
+    $rulemap{"$lhs $leaves"} = "$lhs $leaves";
   }
 
   # 2. greedily reduce pairs until no more remain
@@ -890,7 +900,7 @@ sub binarize_grammar {
 
   # rules: the binarized rules { rhs => { lhs => prob } }
   # pieces_to_parents: maps binarized rule pieces to original parent
-  # rulemap: maps original rules to their new top-level piece
+  # rulemap: maps top-level pieces to original rule strings
   return (\%rules,\%pieces_to_parents,\%rulemap);
 }
 
