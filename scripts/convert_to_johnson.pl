@@ -13,7 +13,7 @@ use strict;
 use warnings;
 use TSG;
 
-my (%rules,%words);
+my (%rules,%map);
 
 print "0.00000000000000000001 TOP --> DUMMY\n";
 while (my $line = <>) {
@@ -21,18 +21,25 @@ while (my $line = <>) {
 
   my ($prob, @rest) = split(' ',$line);
 
-  my $tree = build_subtree(join(" ",@rest));
+  my $line = join(" ",@rest);
+  my $tree = build_subtree($line);
 
   my $frontier = $tree->{frontier};
-  my @rank = split(" ",$frontier);
-  if (@rank > 1) {
-    # grab all the words from the RHS of the rule to be added as rules later
-    map {$words{$_} = 1} ($frontier =~ /_(\S+)_/g);
-    # print "FOUND WORDS(", join(",",@words), ") for LHS($tree->{label})\n";
+  my $rule = "$tree->{label} --> $frontier";
 
-    $frontier =~ s/_(\S+)_/[$1]/g;
+  if (! exists $rules{$rule} || $prob > $rules{$rule}) {
+    $rules{$rule} = $prob;
+
+    if ($tree->{depth} > 1) {
+      $map{$rule}   = $line;
+    }
   }
-  print "$prob $tree->{label} --> $frontier\n";
 }
 
-map { print "1.0 [$_] --> $_\n" } (keys %words);
+while (my ($rule,$prob) = each %rules) {
+  print "$prob $rule\n";
+}
+
+while (my ($flat,$full) = each %map) {
+  print STDERR "$flat ||| $full\n";
+}
