@@ -16,11 +16,16 @@ use TSG;
 
 while (my $line = <>) {
   chomp($line);
+  if ($line eq "(TOP)") {
+    print "(TOP)\n";
+    next;
+  }
+
   my $tree = build_subtree($line);
 
   walk($tree,[\&clean]);
 
-  print build_subtree_oneline($tree), $/;
+  print build_subtree_oneline($tree,1), $/;
 }
 
 sub clean {
