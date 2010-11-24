@@ -43,21 +43,3 @@ sub print_subtree {
   }
 }
 
-sub mark_spans {
-  my ($node,$index) = @_;
-  $index = 0 unless defined $index;
-
-  if (! @{$node->{children}}) {
-    $node->{i} = $index;
-    $node->{j} = $index;
-    return $index + 1;
-  } else {
-    my $old = $index;
-    map {
-      $index = mark_spans($_,$index)
-    } @{$node->{children}};
-    $node->{i} = $old;
-    $node->{j} = $index - 1;
-    return $index;
-  }
-}
