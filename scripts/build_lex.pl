@@ -15,10 +15,18 @@ use TSG;
 my %words;
 while (my $line = <>) {
   chomp $line;
+
+  if ($line eq "(TOP)" or $line =~ /^\s*$/) {
+    print STDERR "[$.] WARNING: bad tree\n";
+    next;
+  }
+
   my $tree = build_subtree($line);
 
-  walk($tree,[\&count_words]);
-  count_words($tree);
+  if ($tree) {
+    walk($tree,[\&count_words]);
+    count_words($tree);
+  }
 }
 
 my $i = 1;
