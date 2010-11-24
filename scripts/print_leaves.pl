@@ -15,7 +15,7 @@ use TSG;
 my %PARAMS = (
   lexicon => "$basedir/data/lex.02-21",
   thresh => 0,
-  tags => 0,
+  '*tags' => 0,
   words => 1,
 );
 process_params(\%PARAMS,\@ARGV,\%ENV);
