@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+# reads in a corpus and counts events.
+
 my $basedir;
 BEGIN {
   $basedir = "$ENV{HOME}/code/dpinfer";
@@ -27,33 +29,14 @@ my %PARAMS = (
   verbosity => 1 
 );
 
-# check for environment variables overriding defaults
-foreach my $key (keys %PARAMS) {
-  if (exists $ENV{$key}) {
-    $PARAMS{$key} = $ENV{$key};
-    print "* $key = $PARAMS{$key} [env]\n";
-  }
-}
-# check for command line overriding defaults
-while (@ARGV) {
-  my $arg = shift @ARGV;
-  die "invalid option '$arg'" unless $arg =~ /^-/;
-  $arg =~ s/^-//g;
-  if (exists $PARAMS{$arg}) {
-    $PARAMS{$arg} = shift @ARGV;
-    print STDERR "* $arg = $PARAMS{$arg} [cmdline]\n";
-  } else {
-    die "no such option '$arg'";
-  }
-}
-
-read_lexicon($PARAMS{lexicon});
+process_params(\%PARAMS,\@ARGV,\%ENV);
+my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
 
 my (%widths,%pairs);
 while (my $line = <>) {
   chomp($line);
   
-  my $tree = build_subtree($line);
+  my $tree = build_subtree($line,$lexicon);
 
   my $func = sub {
     my ($node) = @_;
