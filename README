@@ -1,5 +1,5 @@
 DPTSG
-June 2009, Matt Post
+January 2010, Matt Post
 --
 
 The code contained in this project directory was used to obtain the
@@ -15,8 +15,8 @@ files, along with the steps needed to prepare all of the data to do
 Gibbs sampling.
 
 All files and code herein assume a base directory of
-$ENV{HOME}/code/dpfiner.  At some point I hope to parameterize this,
-but for now you will have to change it manually.
+$ENV{HOME}/code/dpinfer.  At some point I hope to parameterize this,
+but for now you will have to change it manually at the top of each script.
 
 * List of programs in scripts/
 ** oneline_treebank.pl
@@ -61,10 +61,11 @@ but for now you will have to change it manually.
 ** Generate the lexicon
 
   This determines which words get transformed into one of the ~ 60
-  unknown word bins (code for which was borrowed and adapted from the
-  Berkeley parser)
+  unknown word bins.  It writes (on STDOUT) a vocabulary file with
+  lines of the form "ID WORD COUNT", for all words found in the
+  training trees.
 
-  $ ./build_lex.pl 5 data/wsj.trees.02-21.clean > data/lex.02-21
+  $ ./build_lex.pl < data/wsj.trees.02-21.clean > data/lex.02-21
 
 ** Annotate the training data with spinal annotations
 
@@ -83,8 +84,10 @@ but for now you will have to change it manually.
      > data/wsj.trees.02-21.clean.annotated
 
    You need this representation if you want to initialize the Gibbs
-   sampler from the spinal derivations instead of the PCFG derivations, and
-   also to extract the spinal baseline grammar.
+   sampler from the spinal derivations instead of the PCFG
+   derivations, and also to extract the spinal baseline grammar.  This
+   initialization is recommended since it converges more quickly to
+   better grammars.
 
 ** Generate the development and test sets.
 
@@ -106,17 +109,17 @@ but for now you will have to change it manually.
 
 ** Generate the PCFG rule probs used for the base measure.
 
-   $ cat data/wsj.trees.02-21.clean | ./rule_probs.pl -counts 1 > data/pcfg_counts
-   $ cat data/wsj.trees.02-21.clean | ./rule_probs.pl > data/pcfg_rules.prb
+   $ cat data/wsj.trees.02-21.clean | ./rule_probs.pl -counts > data/rule_counts
+   $ cat data/wsj.trees.02-21.clean | ./rule_probs.pl > data/rule_probs
 
    (alternately, the grammar could be produced directly from the counts:
-    $ cat data/pcfg_counts | ./rule_probs.pl > data/pcfg_rules.prb
+    $ cat data/rule_counts | ./rule_probs.pl > data/rule_probs
    )
 
 ** Generate the spinal grammar
-
-   $ cat data/wsj.trees.02-21.clean.annotated | ./rule_probs.pl -counts 1 > data/spinal_counts
-   $ cat data/pcfg_counts data/spinal_counts | ./rule_probs.pl > data/spinal_rules.prb
+   
+   $ cat data/wsj.trees.02-21.clean.annotated | ./rule_probs.pl -counts > data/spinal_counts
+   $ cat data/rule_counts data/spinal_counts | ./rule_probs.pl > data/spinal_probs
 
 ** Generate Bod's grammar
 
@@ -126,7 +129,7 @@ but for now you will have to change it manually.
    rule.  To build the grammar, remove that field, add in the PCFG
    counts, and normalize:
 
-   $ (perl -pe 's/^\d+ //' data/bod01.rules; cat data/pcfg_counts) | ./rule_probs.pl > data/bod01.prb
+   $ (perl -pe 's/^\d+ //' data/bod01.rules; cat data/rule_counts) | ./rule_probs.pl > data/bod01.prb
    
 * Gibbs sampling
 
@@ -153,6 +156,7 @@ but for now you will have to change it manually.
     -stop      the stop probability for the DP base measure
     -pcfg      the pcfg grammar used for the DP base measure
     -rundir    the run directory (default = pwd)
+    -two       sample two nodes at a time (default = sample one)
     [many more options are available]
 
     e.g.,
@@ -170,13 +174,13 @@ but for now you will have to change it manually.
 
     bzcat $i/counts.bz2 | $basedir/scripts/rule_probs.pl > $i.prb
 
-  You can now parse with these grammar by passing them to the parser
-  as the value of the -grammar flag.  
 
 * Parsing
 
-  Parse with the learned grammars.  I will provide my parser once I have
-  a chance to clean it up (or upon request).
+  You can now parse with these grammars with your favorite CKY
+  parser.  I have modified Mark Johnson's parser to work with these
+  grammars; please feel free to email me for a copy if I haven't
+  already posted the source to my website.
 
 * Evaluation
 
