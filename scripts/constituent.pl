@@ -142,7 +142,7 @@ sub goodruleof {
     $str = "($label";
     foreach my $kid (@{$node->{children}}) {
       if ($kid->{label} =~ /^\*/) {
-        my $recurse = ruleof($kid);
+        my $recurse = goodruleof($kid);
         return undef unless $recurse;
         $str .= " " . $recurse;
       } else {
