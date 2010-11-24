@@ -23,6 +23,7 @@ while (my $line = <>) {
   chomp $line;
 
   my $tree = build_subtree($line);
+
   walk_postorder($tree,[\&mark_heads,\&annotate]);
 
   @{$tree->{children}}[0]->{label} =~ s/^\*//; # undo top-level merge
