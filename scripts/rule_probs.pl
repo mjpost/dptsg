@@ -39,7 +39,7 @@ my %PARAMS = (
 process_params(\%PARAMS,\@ARGV,\%ENV);
 my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
 
-my (%COUNTS,%UNKCOUNTS,%WORDCOUNTS,%TAGCOUNTS,%CLASSCOUNTS);
+my (%COUNTS,%UNKCOUNTS); #,%WORDCOUNTS,%TAGCOUNTS,%CLASSCOUNTS);
 
 while (my $line = <>) {
   chomp($line);
@@ -62,7 +62,7 @@ while (my $line = <>) {
   }
 }
 
-my $total_words = sum values %WORDCOUNTS;
+# my $total_words = sum values %WORDCOUNTS;
 
 # sum lefthand sides for each nonterminal
 my %LHS_COUNTS;
@@ -154,8 +154,8 @@ sub increment_counts {
     my $word = delex($1);
     # print "UNKCOUNTS($lhs," . classof($word) . ")\n";
     $UNKCOUNTS{$lhs}{classof($word)} += $count;
-    $WORDCOUNTS{$word} += $count;
-    $TAGCOUNTS{$lhs} += $count;
-    $CLASSCOUNTS{classof($word)} += $count;
+    # $WORDCOUNTS{$word} += $count;
+    # $TAGCOUNTS{$lhs} += $count;
+    # $CLASSCOUNTS{classof($word)} += $count;
   }
 }

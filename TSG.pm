@@ -282,6 +282,7 @@ sub build_subtree {
   my $c;
   my @c;
   my $top;
+  my @words;  # the words of the sentence
   while (@a) {
     my $token = shift @a;
     if ($token =~ s/^\(//) { ### new node
@@ -322,8 +323,10 @@ sub build_subtree {
 
     } else { ### leaf (also new node)
 
+      push(@words,$token);
+
       $c = {};
-      $c->{label} = $lexicon ? lex(signature($token)) : $token;
+      $c->{label} = $lexicon ? lex(signature($token,scalar @words)) : $token;
       $c->{word} = $token;
       $c->{children} = [];
       $c->{numkids} = 0;
