@@ -50,7 +50,7 @@ my @threads;
 {
   my $thread = threads->new(sub {
       print "Starting server (port = $port, chunk_size = $chunk_size)\n";
-      system("~/code/dpdop/server.pl $corpus $port $chunk_size"); });
+      system("$basedir/scripts/server.pl $corpus $port $chunk_size"); });
     push @threads, $thread;
     sleep 3;
 }
