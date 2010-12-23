@@ -18,7 +18,7 @@ use vars qw|@ISA @EXPORT|;
 @ISA = qw|Exporter|;
 @EXPORT = qw| build_subtree build_subtree_oneline read_lexicon read_pos extract_subtrees extract_rules_subtree signature classof mark_spans mark_subtree_height count_subtree_lex count_subtree_frontier count_subtree_nodes prune pruneit lex delex islex delex_tree walk walk_postorder frontier lhsof $LEXICON $LEXICON_THRESH ruleof is_terminal is_preterminal process_params scrub_node mark_parent mark_heads binarize_grammar binarize_subtree push_weights|;
 
-require "$ENV{HOME}/code/dpinfer/head-rules-chiang.pl";
+require "$ENV{DPTSG}/head-rules-chiang.pl";
 
 ## VARIABLES
 # a list of invalid parts of speech, used by the prune() function
