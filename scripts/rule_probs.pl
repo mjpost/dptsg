@@ -112,7 +112,9 @@ foreach my $lhs (keys %COUNTS) {
       } else {
         $pr = ($COUNTS{$lhs}{$rule} / $LHS_COUNTS{$lhs});
       }
-      print "$pr $rule\n";
+      if ($pr > 0) {
+        print "$pr $rule\n";
+      }
     }
   }
 }

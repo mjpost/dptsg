@@ -11,13 +11,14 @@ use List::Util qw|min|;
 my $basedir = $ENV{DPTSG} or die "Environment variable DPTSG undefined (set to code root)";
 unshift @INC, $basedir;
 
+my $queue = $ENV{q} || "mem.q";
 my $mem_est = "6000mb";
 my $time_est = "4:00:00";
 my $port = $ENV{port} || 7777;
 my $num_clients = $ENV{clients} || 64;
-my $hostname = $ENV{server} || "node64";
+chomp(my $hostname = `uname -n`);
 my $cmd = $ENV{cmd} || "$basedir/parse.pl";
-my $chunk_size = $ENV{chunk_size} || 5;
+my $chunk_size = $ENV{chunk_size} || 25;
 my $sleep_time = (defined $ENV{sleep}) ? $ENV{sleep} : 0;
 my $rundir = $ENV{rundir} || $ENV{PWD} || "/p/mt-scratch/post/dpdop/test";
 my $grammar = $ENV{grammar} || "$basedir/data/pcfg_rules.prb";
@@ -50,14 +51,14 @@ my @threads;
 {
   my $thread = threads->new(sub {
       print "Starting server (port = $port, chunk_size = $chunk_size)\n";
-      system("~/code/dpdop/server.pl $corpus $port $chunk_size"); });
-    push @threads, $thread;
-    sleep 3;
+      system("$basedir/scripts/server.pl $corpus $port $chunk_size verbose > server.log"); });
+  push @threads, $thread;
+  sleep 3;
 }
 
 # start the clients
 for my $num (1..$num_clients) {
-    my $thread = threads->new(sub { system("qsub -l nodes=fast -l pvmem=$mem_est,walltime=$time_est,nodes=1:ppn=1 -z -v server=$hostname,port=$port,cmd=$cmd,corpus=$corpus,grammar=$grammar,binsize=$binsize,kbest=$kbest,thresh=$thresh,rundir=$rundir,ruleserver=$ruleserver,multipass=$multipass,esrap=$esrap,mismatch=$mismatch,diffuse=$diffuse,collapse=$collapse,binarize=$binarize $client") });
+    my $thread = threads->new(sub { system("qsub -q $queue -j y -cwd -v DPTSG=$basedir,server=$hostname,port=$port,corpus=$corpus,grammar=$grammar,rundir=$rundir $client") });
     push @threads, $thread;
     sleep $sleep_time;
 }

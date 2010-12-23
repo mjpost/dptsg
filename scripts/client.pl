@@ -9,14 +9,12 @@ use IO::Socket;
 my $basedir = $ENV{DPTSG} or die "Environment variable DPTSG undefined (set to code root)";
 unshift @INC, $basedir;
 
-my $id = $ENV{HOSTNAME} . " " . $$;
+my $id = $ENV{HOSTNAME} . "_" . $$;
 
 my $remote_host = $ENV{server} || "mgt";
 my $remote_port = $ENV{port} || 4444;
 my $grammar     = $ENV{grammar} or die "no grammar";
 my $corpus      = $ENV{corpus} or die "no corpus";
-my $kbest       = $ENV{kbest} or die "no kbest";
-my $binsize     = $ENV{binsize} or die "no binsize";
 my $rundir      = $ENV{rundir} or die "no rundir";
 my $mismatch    = $ENV{mismatch} || 0;
 my $multipass   = $ENV{multipass} || "";
@@ -43,16 +41,19 @@ for (;;) {
 
   $answer = <$socket>;   chomp $answer;
 
-  if ($answer eq "0") {
+  if ($answer eq "0" || $answer eq "") {
     last;
   }
 
-  my ($start, $stop) = split ' ', $answer;
+  my ($start, $stop) = split(' ', $answer);
 
   my $file = "$rundir/out.parse.$start-$stop";
   my $logfile = "$rundir/log.$start-$stop";
-  print "START=$start STOP=$stop CORPUS=$corpus GRAMMAR=$grammar\n";
-  system("$ENV{HOME}/code/cky/llncky -f $start -t $stop $corpus $grammar -o $file -l $logfile");
+
+  my $cmd = "$ENV{HOME}/code/cky/llncky -f $start -t $stop $corpus $grammar -o $file -l $logfile >> run.log.$id 2>&1";
+  # print "START=$start STOP=$stop CORPUS=$corpus GRAMMAR=$grammar RUNDIR=$rundir\n";
+  print $cmd . $/;
+  system($cmd);
 
   # and terminate the connection when we're done
   close($socket);
