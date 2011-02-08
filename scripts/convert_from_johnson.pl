@@ -2,7 +2,7 @@
 
 my $basedir;
 BEGIN {
-  $basedir = "$ENV{HOME}/code/dpinfer";
+  $basedir = $ENV{DPTSG};
   unshift @INC, $basedir;
 }
 
