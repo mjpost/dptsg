@@ -26,7 +26,7 @@ use List::Util qw|reduce min shuffle sum|;
 
 my $basedir;
 BEGIN {
-  $basedir = "$ENV{HOME}/code/dpinfer";
+  $basedir = $ENV{DPTSG};
   unshift @INC, $basedir;
 }
 
