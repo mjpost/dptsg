@@ -13,6 +13,7 @@ my $id = $ENV{HOSTNAME} . "_" . $$;
 
 my $remote_host = $ENV{server} || "mgt";
 my $remote_port = $ENV{port} || 4444;
+my $maxsentlen  = $ENV{maxsentlen} || 100;
 my $grammar     = $ENV{grammar} or die "no grammar";
 my $corpus      = $ENV{corpus} or die "no corpus";
 my $rundir      = $ENV{rundir} or die "no rundir";
@@ -50,9 +51,9 @@ for (;;) {
   my $file = "$rundir/out.parse.$start-$stop";
   my $logfile = "$rundir/log.$start-$stop";
 
-  my $cmd = "$ENV{HOME}/code/cky/llncky -f $start -t $stop $corpus $grammar -o $file -l $logfile >> run.log.$id 2>&1";
+  my $cmd = "$ENV{HOME}/code/cky/llncky -f $start -t $stop $corpus $grammar -o $file -l $logfile -m $maxsentlen >> run.log.$id 2>&1";
   # print "START=$start STOP=$stop CORPUS=$corpus GRAMMAR=$grammar RUNDIR=$rundir\n";
-  print $cmd . $/;
+#  print $cmd . $/;
   system($cmd);
 
   # and terminate the connection when we're done
