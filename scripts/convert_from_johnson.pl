@@ -14,8 +14,8 @@ use TSG;
 
 my %PARAMS = (
   'map' => undef,     # map file
-  'scrub' => 1,       #
-  'delex' => 1,
+  'scrub' => 1,       # remove asterisks denoting TSG derivation
+  'delex' => 1,       # removes underscores around terminals
 );
 process_params(\%PARAMS,\@ARGV,\%ENV);
 
