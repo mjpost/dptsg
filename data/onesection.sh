@@ -1,13 +1,19 @@
 #!/bin/bash
 
+# Creates source files from sections of the Treebank
+# usage: [PENNWSJTREEBANK=/path/to/treebank] [force=1] section=N onesection.sh
+
 set -u
 
+# overwrite existing files if set to true
 : ${force=0}
+# the location of the Penn Treebank source trees (from the LDC)
+: ${PENNWSJTREEBANK=/p/mt/corpora/wsj}
 
 o=wsj.trees.$section
 if test ! -e $o || $force; then
     echo "creating $o"
-    cat /p/mt/corpora/wsj/$section/*mrg | ~/code/dpinfer/scripts/oneline_treebank.pl > $o
+    cat $PENNWSJTREEBANK/$section/*mrg | ~/code/dpinfer/scripts/oneline_treebank.pl > $o
 else 
     echo "$o already created"
 fi
