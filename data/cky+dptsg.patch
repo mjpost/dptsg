@@ -1,0 +1,923 @@
+Binary files cky.orig2/cky and cky/cky differ
+Binary files cky.orig2/cky.o and cky/cky.o differ
+Binary files cky.orig2/cky.tbz and cky/cky.tbz differ
+Binary files cky.orig2/count-local-trees and cky/count-local-trees differ
+Binary files cky.orig2/count-local-trees.o and cky/count-local-trees.o differ
+diff -rupN --exclude .bzr cky.orig2/demo.lt cky/demo.lt
+--- cky.orig2/demo.lt	2006-03-06 09:42:52.000000000 -0500
++++ cky/demo.lt	1969-12-31 19:00:00.000000000 -0500
+@@ -1,14 +0,0 @@
+-1 Start --> S
+-1 S --> NP VP
+-1 NP --> DT NN
+-1 VP --> V NP
+-1 VP --> V NP PP
+-1 PP --> P NP
+-1 DT --> the
+-1 DT --> a
+-1 NN --> dog
+-1 NN --> cat
+-1 NN --> house
+-1 V --> likes
+-1 V --> chases
+-1 P --> in
+diff -rupN --exclude .bzr cky.orig2/demo.yld cky/demo.yld
+--- cky.orig2/demo.yld	2006-03-06 09:37:30.000000000 -0500
++++ cky/demo.yld	1969-12-31 19:00:00.000000000 -0500
+@@ -1,3 +0,0 @@
+-the dog chases the cat
+-the cat likes the dog
+-the dog chases a dog in the house
+diff -rupN --exclude .bzr cky.orig2/grammar.c cky/grammar.c
+--- cky.orig2/grammar.c	2006-07-04 04:06:04.000000000 -0400
++++ cky/grammar.c	2010-11-24 09:54:34.086224000 -0500
+@@ -175,7 +175,9 @@ read_grammar(FILE *fp, si_t si) 
+   sihashursit uhit;
+   size_t  root_label = 0, lhs, cat, rhs[MAXRHS];
+ 
++  int lineno = 0;
+   while ((n = fscanf(fp, " %lg ", &weight)) == 1) {	/* read the count */
++    lineno++;
+     lhs = read_cat(fp, si);
+     assert(weight > 0);
+     assert(lhs);
+@@ -198,7 +200,7 @@ read_grammar(FILE *fp, si_t si) 
+ 
+     switch (n) {
+     case 0: 
+-      fprintf(stderr, "read_grammar() in grammar.c: rule with empty rhs\n");
++      fprintf(stderr, "read_grammar() in grammar.c: rule with empty rhs (line %d)\n", lineno);
+       exit(EXIT_FAILURE);
+       break;
+     case 1: 
+Binary files cky.orig2/grammar.o and cky/grammar.o differ
+Binary files cky.orig2/hash-string.o and cky/hash-string.o differ
+Binary files cky.orig2/ledge.o and cky/ledge.o differ
+diff -rupN --exclude .bzr cky.orig2/lgrammar.h cky/lgrammar.h
+--- cky.orig2/lgrammar.h	2006-02-12 14:48:33.000000000 -0500
++++ cky/lgrammar.h	2010-11-24 09:54:34.086224000 -0500
+@@ -42,6 +42,7 @@ typedef struct grammar {
+ } grammar;
+ 
+ si_index read_cat(FILE *fp, si_t si);
++si_index read_cat_term(FILE *fp, si_t si);
+ grammar read_grammar(FILE *fp, si_t si);
+ void write_grammar(FILE *fp, grammar g, si_t si);
+ void free_grammar(grammar g);
+Binary files cky.orig2/lgrammar.o and cky/lgrammar.o differ
+diff -rupN --exclude .bzr cky.orig2/llgrammar.c cky/llgrammar.c
+--- cky.orig2/llgrammar.c	2010-01-27 06:03:57.000000000 -0500
++++ cky/llgrammar.c	2010-11-24 09:54:34.086224000 -0500
+@@ -19,16 +19,16 @@
+ HASH_CODE_ADD(sihashf, si_index, FLOAT, IDENTITY, NEQ, IDENTITY, NO_OP, 0, 0.0, NO_OP)
+ 
+ /*
+-static brule
+-make_brule(const FLOAT prob, const si_index parent, const si_index left, const si_index right)
+-{
++  static brule
++  make_brule(const FLOAT prob, const si_index parent, const si_index left, const si_index right)
++  {
+   brule br = MALLOC(sizeof(struct brule));
+   br->prob = prob;
+   br->parent = parent;
+   br->left = left;
+   br->right = right;
+   return br;
+-}
++  }
+ */
+ 
+ void
+@@ -65,7 +65,7 @@ HASH_CODE(brihashbr, brindex, brule, bri
+ 
+ static void
+ add_brule(sihashbrs left_brules_ht, brihashbr brihtbr, 
+-	  const FLOAT prob, const si_index parent, const si_index left, const si_index right)
++          const FLOAT prob, const si_index parent, const si_index left, const si_index right)
+ {
+   brindex bri;
+   brule br;
+@@ -161,6 +161,40 @@ read_cat(FILE *fp, si_t si)
+   }
+ 
+   string[i] = '\0';
++
++  return(si_string_index(si, string));
++}
++
++/* read_cat_term()
++ * 
++ * Reads a word from the input file and surrounds it with _s, for
++ * compatibility with the form of the grammars I use.
++ */
++si_index 
++read_cat_term(FILE *fp, si_t si)
++{
++  char string[MAXLABELLEN];
++  int    c;
++  size_t i;
++
++  while ((c = fgetc(fp)) && isspace(c) && (c != '\n'))		/* skip spaces */
++    ;
++
++  if ((c == '\n') || (c == EOF)) return(0);			/* line ended, return 0 */
++
++  string[0] = '_';
++  for (i = 1; (c != EOF) && (!isspace(c)) && (i < MAXLABELLEN); c = fgetc(fp)) 
++    string[i++] = c;
++  ungetc(c, fp);
++
++  if ((i-1) >= MAXLABELLEN) {
++    string[MAXLABELLEN-1] = '\0';
++    fprintf(stderr, "read_cat() in grammar.c: Category label longer than MAXLABELLEN: %s\n", string);
++    exit(EXIT_FAILURE);
++  }
++
++  string[i] = '_';
++  string[i+1] = '\0';
+   return(si_string_index(si, string));
+ }
+   
+@@ -180,7 +214,10 @@ read_grammar(FILE *fp, si_t si) 
+   sihashursit uhit;
+   size_t  root_label = 0, lhs, cat, rhs[MAXRHS];
+ 
++  int ruleno = 0;
+   while ((n = fscanf(fp, " %lg ", &weight)) == 1) {	/* read the rule weight */
++    ruleno++;
++
+     lhs = read_cat(fp, si);
+     assert(weight > 0);
+     assert(lhs);
+@@ -192,18 +229,18 @@ read_grammar(FILE *fp, si_t si) 
+     for (n=0; n<MAXRHS; n++) {				/* read the rhs, n is length of rhs */
+       cat = read_cat(fp, si);
+       if (!cat)
+-	break;
++        break;
+       rhs[n] = cat;
+     }
+ 
+     if (n >= MAXRHS) {
+-      fprintf(stderr, "read_grammar() in grammar.c: rule rhs too long\n");
++      fprintf(stderr, "read_grammar() in llgrammar.c: rule rhs too long\n");
+       exit(EXIT_FAILURE);
+     }
+ 
+     switch (n) {
+     case 0: 
+-      fprintf(stderr, "read_grammar() in grammar.c: rule with empty rhs\n");
++      fprintf(stderr, "read_grammar() in llgrammar.c: rule with empty rhs (line %d)\n", ruleno);
+       exit(EXIT_FAILURE);
+       break;
+     case 1: 
+@@ -218,51 +255,54 @@ read_grammar(FILE *fp, si_t si) 
+     default: 
+       { int start, i, j;
+         char bcat[MAXBLABELLEN], *s;
+-	si_index bparent, left, right;
++        si_index bparent, left, right;
+ 
+-	right = rhs[n-1];		/* rightmost category */
+-	for (start=n-2; start>=1; start--) {
++        right = rhs[n-1];		/* rightmost category */
++        for (start=n-2; start>=1; start--) {
+ 	  
+-	  i = 0;			/* i is index into bcat[] */
+-	  for (j=start; j<n; j++) {     /* j is index into rhs[] */
+-	    if (j!=start) {
+-	      bcat[i++] = BINSEP;
+-	      assert(i < MAXBLABELLEN);
+-	    }
++          i = 0;			/* i is index into bcat[] */
++          for (j=start; j<n; j++) {     /* j is index into rhs[] */
++            if (j!=start) {
++              bcat[i++] = BINSEP;
++              assert(i < MAXBLABELLEN);
++            }
+ 	    
+-	    s = si_index_string(si, rhs[j]);
+-	    while (*s) {
+-	      bcat[i++] = *s++;
+-	      assert(i < MAXBLABELLEN);
+-	  }}
+-
+-	  bcat[i] = '\0';
+-	  bparent = si_string_index(si, bcat);
+-	  left = rhs[start];
+-	  add_brule(left_brules_ht, brihtbr, weight, bparent, left, right);
+-	  sihashf_inc(parent_weight_ht, bparent, weight);
+-	  right = bparent;
+-	}
++            s = si_index_string(si, rhs[j]);
++            while (*s) {
++              bcat[i++] = *s++;
++              assert(i < MAXBLABELLEN);
++            }}
++
++          bcat[i] = '\0';
++          bparent = si_string_index(si, bcat);
++          left = rhs[start];
++          add_brule(left_brules_ht, brihtbr, weight, bparent, left, right);
++          sihashf_inc(parent_weight_ht, bparent, weight);
++          right = bparent;
++        }
+ 	
+-	add_brule(left_brules_ht, brihtbr, weight, lhs, rhs[0], right);
+-	sihashf_inc(parent_weight_ht, lhs, weight);
++        add_brule(left_brules_ht, brihtbr, weight, lhs, rhs[0], right);
++        sihashf_inc(parent_weight_ht, lhs, weight);
+       }}}
++
++  /* fprintf(stderr,"Read %d rules\n", ruleno-1); */
+   
+   free_brihashbr(brihtbr);	/* free brindex hash table */
+ 
+   { 
+     int i; /* normalize grammar rules, take logs of rule probabilities */
+ 
+-    for (bhit = sihashbrsit_init(left_brules_ht); sihashbrsit_ok(bhit); bhit = sihashbrsit_next(bhit))
++    for (bhit = sihashbrsit_init(left_brules_ht); sihashbrsit_ok(bhit); bhit = sihashbrsit_next(bhit)) {
+       for (i=0; i<bhit.value.n; i++) {
+-	bhit.value.e[i]->prob = log(bhit.value.e[i]->prob/sihashf_ref(parent_weight_ht, bhit.value.e[i]->parent));
+-	assert(bhit.value.e[i]->prob <= 0);
++        bhit.value.e[i]->prob = log(bhit.value.e[i]->prob/sihashf_ref(parent_weight_ht, bhit.value.e[i]->parent));
++        assert(bhit.value.e[i]->prob <= 0);
+       }
++    }
+ 
+     for (uhit = sihashursit_init(child_urules_ht); sihashursit_ok(uhit); uhit = sihashursit_next(uhit))
+       for (i=0; i<uhit.value.n; i++) {
+-	uhit.value.e[i]->prob = log(uhit.value.e[i]->prob/sihashf_ref(parent_weight_ht, uhit.value.e[i]->parent));
+-	assert(uhit.value.e[i]->prob <= 0);
++        uhit.value.e[i]->prob = log(uhit.value.e[i]->prob/sihashf_ref(parent_weight_ht, uhit.value.e[i]->parent));
++        assert(uhit.value.e[i]->prob <= 0);
+       }
+   }
+ 
+@@ -271,21 +311,21 @@ read_grammar(FILE *fp, si_t si) 
+ 
+     for (bhit = sihashbrsit_init(left_brules_ht); sihashbrsit_ok(bhit); bhit = sihashbrsit_next(bhit))
+       for (i=0; i<bhit.value.n; i++) {
+-	si_index key = bhit.value.e[i]->parent;
+-	urules urs = sihashurs_ref(child_urules_ht, key);
++        si_index key = bhit.value.e[i]->parent;
++        urules urs = sihashurs_ref(child_urules_ht, key);
+ 	
+-	if (urs.n > 0) {
+-	  urules *pursp = sihashurs_valuep(parent_child_urules_ht, key);
++        if (urs.n > 0) {
++          urules *pursp = sihashurs_valuep(parent_child_urules_ht, key);
+ 	
+-	  if (pursp->nsize == 0) {
+-	    pursp->n = urs.n;
+-	    pursp->nsize = urs.nsize;
+-	    pursp->e = REALLOC(pursp->e, pursp->nsize * sizeof(pursp->e[0]));
++          if (pursp->nsize == 0) {
++            pursp->n = urs.n;
++            pursp->nsize = urs.nsize;
++            pursp->e = REALLOC(pursp->e, pursp->nsize * sizeof(pursp->e[0]));
+ 	    
+-	    for (j = 0; j < urs.n; j++) {
+-	      assert(urs.e[j]->prob <= 0);
+-	      pursp->e[j] = make_urule(urs.e[j]->prob, urs.e[j]->parent, urs.e[j]->child);
+-	    }}}}}
++            for (j = 0; j < urs.n; j++) {
++              assert(urs.e[j]->prob <= 0);
++              pursp->e[j] = make_urule(urs.e[j]->prob, urs.e[j]->parent, urs.e[j]->child);
++            }}}}}
+   
+   free_sihashf(parent_weight_ht);
+  
+@@ -309,15 +349,15 @@ write_grammar(FILE *fp, grammar g, si_t 
+   for (bhit=sihashbrsit_init(g.brs); sihashbrsit_ok(bhit); bhit=sihashbrsit_next(bhit)) 
+     for (i=0; i<bhit.value.n; i++) 
+       fprintf(fp, "%g	%s " REWRITES " %s %s\n", (double) exp(bhit.value.e[i]->prob), 
+-	      si_index_string(si, bhit.value.e[i]->parent),
+-	      si_index_string(si, bhit.value.e[i]->left),
+-	      si_index_string(si, bhit.value.e[i]->right));
++              si_index_string(si, bhit.value.e[i]->parent),
++              si_index_string(si, bhit.value.e[i]->left),
++              si_index_string(si, bhit.value.e[i]->right));
+ 
+   for (uhit=sihashursit_init(g.urs); sihashursit_ok(uhit); uhit=sihashursit_next(uhit)) 
+     for (i=0; i<uhit.value.n; i++) 
+       fprintf(fp, "%g	%s " REWRITES " %s\n", (double) exp(uhit.value.e[i]->prob), 
+-	      si_index_string(si, uhit.value.e[i]->parent),
+-	      si_index_string(si, uhit.value.e[i]->child));
++              si_index_string(si, uhit.value.e[i]->parent),
++              si_index_string(si, uhit.value.e[i]->child));
+ }
+ 
+ void
+Binary files cky.orig2/llgrammar.o and cky/llgrammar.o differ
+Binary files cky.orig2/llncky and cky/llncky differ
+diff -rupN --exclude .bzr cky.orig2/llncky.c cky/llncky.c
+--- cky.orig2/llncky.c	2006-12-22 11:38:49.000000000 -0500
++++ cky/llncky.c	2011-01-03 08:33:38.701000000 -0500
+@@ -19,6 +19,9 @@
+ #include "hash-templates.h"
+ #include "blockalloc.h"
+ 
++#include <ctype.h>
++#include <stdio.h>
++#include <unistd.h>
+ #include <assert.h>
+ #include <math.h>
+ #include <stdlib.h>
+@@ -43,7 +46,7 @@ typedef struct chart_cell {
+ 
+ chart_cell
+ make_chart_cell(si_index label, bintree left, bintree right,
+-		FLOAT lprob, int rightpos, chart_cell next)
++                FLOAT lprob, int rightpos, chart_cell next)
+ {
+   chart_cell c = MALLOC_CHART(sizeof(struct chart_cell));
+   c->tree.label = label;
+@@ -64,7 +67,7 @@ make_chart_cell(si_index label, bintree 
+ 
+ /* HASH_HEADER(sihashcc, si_index, chart_cell) */
+ /* HASH_CODE(sihashcc, si_index, chart_cell, IDENTITY, NEQ, IDENTITY, NO_OP, 
+-	  NULL, FREE) */
++   NULL, FREE) */
+ 
+ #include "ncky-helper.c"	
+ 
+@@ -91,7 +94,7 @@ chart_make(size_t n)
+   for (left = 0; left < n; left++)
+     for (right = left+1; right <= n; right++) 
+       CHART_ENTRY(c, left, right) = 
+-	make_sihashcc(left+1 == right ? NLABELS : CHART_CELLS);
++        make_sihashcc(left+1 == right ? NLABELS : CHART_CELLS);
+ 
+   return c;
+ }
+@@ -119,8 +122,9 @@ chart_free(chart c, size_t n)
+   FREE_CHART;
+ }
+ 
++
+ /*
+-void
++static void
+ chart_entry_display(FILE *fp, sihashcc chart_entry, si_t si)
+ {
+   sihashccit hit;
+@@ -129,7 +133,7 @@ chart_entry_display(FILE *fp, sihashcc c
+   for (hit=sihashccit_init(chart_entry); sihashccit_ok(hit); 
+        hit = sihashccit_next(hit)) {
+     fprintf(fp, "\n %s: %g \t", si_index_string(si, hit.key),
+-	    (double) exp(hit.value->lprob));
++            (double) exp(hit.value->lprob));
+     t = bintree_tree(&hit.value->tree, si);
+     write_tree(fp, t, si);
+     free_tree(t);
+@@ -137,14 +141,19 @@ chart_entry_display(FILE *fp, sihashcc c
+   fprintf(fp, "\n---\n");
+ }
+ */
++
++int           verbose = 0;
++int           edges_proposed = 0;
+   
+ static chart_cell
+ add_edge(sihashcc chart_entry, si_index label, bintree left, bintree right,
+-	 FLOAT lprob, int right_pos, sihashcc left_vertex)
++         FLOAT lprob, int right_pos, sihashcc left_vertex)
+ {
+   chart_cell *cp = sihashcc_valuep(chart_entry, label);
+   chart_cell cc = *cp;
+ 
++  edges_proposed++;
++
+   if (cc == NULL) {                   /* construct a new chart entry */
+     chart_cell *vertex_ptr = sihashcc_valuep(left_vertex, label);
+     *cp = make_chart_cell(label, left, right, lprob, right_pos, *vertex_ptr);
+@@ -180,20 +189,34 @@ add_edge(sihashcc chart_entry, si_index 
+   return cc;
+ }
+ 
++/*
++void
++dump_chart(int n, chart* c, si_t si)
++{
++
++  for (left = (int) terms.n-1; left >= 0; left--) {
++    for (mid = left+1; mid < (int) terms.n; mid++) {
++      sihashcc chart_entry = CHART_ENTRY(c, left, mid);
++
++  // tree t
++  fprintf(fp, "(%s", si_index_string(si, t->label));
++}
++*/
++
+ 
+ /* follow this unary rule */
+ static void 
+ follow_unary(chart_cell child_cell, sihashcc chart_entry, grammar g, 
+-	     int right_pos, sihashcc left_vertex)   
++             int right_pos, sihashcc left_vertex)   
+ {
+   int	 i;
+   urules urs = sihashurs_ref(g.urs, child_cell->tree.label);
+ 
+   for (i=0; i<urs.n; i++) {
+     chart_cell parent_cell = add_edge(chart_entry, urs.e[i]->parent, 
+-				      &child_cell->tree, NULL,
+-				      child_cell->lprob + urs.e[i]->prob,
+-				      right_pos, left_vertex);
++                                      &child_cell->tree, NULL,
++                                      child_cell->lprob + urs.e[i]->prob,
++                                      right_pos, left_vertex);
+ 
+     if (parent_cell)
+       follow_unary(parent_cell, chart_entry, g, right_pos, left_vertex);
+@@ -202,7 +225,7 @@ follow_unary(chart_cell child_cell, siha
+ 
+ static void
+ apply_unary(sihashcc chart_entry, grammar g, int right_pos, 
+-	    sihashcc left_vertex)
++            sihashcc left_vertex)
+ {
+   sihashursit	ursit;
+   size_t	i;
+@@ -214,12 +237,12 @@ apply_unary(sihashcc chart_entry, gramma
+     
+     if (c)			/* such categories exist in this cell */
+       for (i=0; i<ursit.value.n; i++) {
+-	chart_cell cc = add_edge(chart_entry, ursit.value.e[i]->parent, 
+-				 &c->tree, NULL, 
+-				 c->lprob + ursit.value.e[i]->prob,
+-				 right_pos, left_vertex);
+-	if (cc)
+-	  follow_unary(cc, chart_entry, g, right_pos, left_vertex);
++        chart_cell cc = add_edge(chart_entry, ursit.value.e[i]->parent, 
++                                 &c->tree, NULL, 
++                                 c->lprob + ursit.value.e[i]->prob,
++                                 right_pos, left_vertex);
++        if (cc)
++          follow_unary(cc, chart_entry, g, right_pos, left_vertex);
+       }}}
+ 
+ 
+@@ -235,15 +258,16 @@ apply_binary(sihashcc left_entry, int le
+     chart_cell cl = sihashcc_ref(left_entry, brsit.key);
+     if (cl)	/* such categories exist in this cell */
+       for (i=0; i<brsit.value.n; i++) {
+-	chart_cell cr;
+-	for (cr = sihashcc_ref(c->vertex[mid], brsit.value.e[i]->right);
+-	     cr; cr = cr->next) 
+-	  add_edge(CHART_ENTRY(c,left,cr->rightpos), brsit.value.e[i]->parent,
+-		   &cl->tree, &cr->tree,
+-		   cl->lprob + cr->lprob +  brsit.value.e[i]->prob,
+-		   cr->rightpos, c->vertex[left]);
++        chart_cell cr;
++        for (cr = sihashcc_ref(c->vertex[mid], brsit.value.e[i]->right);
++             cr; cr = cr->next) 
++          add_edge(CHART_ENTRY(c,left,cr->rightpos), brsit.value.e[i]->parent,
++                   &cl->tree, &cr->tree,
++                   cl->lprob + cr->lprob +  brsit.value.e[i]->prob,
++                   cr->rightpos, c->vertex[left]);
+       }}}
+ 
++int sentenceno = 0;
+ 
+ chart
+ cky(struct vindex terms, grammar g, si_t si)
+@@ -260,7 +284,7 @@ cky(struct vindex terms, grammar g, si_t
+     sihashcc    chart_entry = CHART_ENTRY(c, left, left+1);
+     sihashcc    left_vertex = c->vertex[left];
+     chart_cell  cell = add_edge(chart_entry, label, NULL, NULL, 0.0, 
+-				left+1, left_vertex);    
++                                left+1, left_vertex);    
+     
+     assert(cell);  /* check that cell was actually added */
+     follow_unary(cell, chart_entry, g, left+1, left_vertex);
+@@ -270,10 +294,13 @@ cky(struct vindex terms, grammar g, si_t
+ 
+   for (left = (int) terms.n-1; left >= 0; left--) {
+     for (mid = left+1; mid < (int) terms.n; mid++) {
++      if (verbose)
++        printf("SENTNO %d SPAN %d..%d\n", sentenceno, left, mid);
++
+       sihashcc chart_entry = CHART_ENTRY(c, left, mid);
+       /* unary close cell spanning from left to mid */
+       if (mid - left > 1)
+-	apply_unary(chart_entry, g, mid, c->vertex[left]);
++        apply_unary(chart_entry, g, mid, c->vertex[left]);
+       /* now apply binary rules */
+       apply_binary(chart_entry, left, mid, c, g);
+     }
+@@ -281,11 +308,12 @@ cky(struct vindex terms, grammar g, si_t
+      * there's no need to apply binary rules to these
+      */
+     apply_unary(CHART_ENTRY(c, left, terms.n), g, 
+-		(int) terms.n, c->vertex[left]);
+-    /*
+-      printf("Chart entry %d-%d\n", (int) left, (int) right);
+-      chart_entry_display(CHART_ENTRY(c,left,right), si);
+-     */
++                (int) terms.n, c->vertex[left]);
++
++/*
++    printf("Chart entry %d-%d\n", (int) left, (int) mid);
++    chart_entry_display(CHART_ENTRY(c,left,mid), si);
++*/
+   }
+   return c;
+ }
+@@ -297,7 +325,7 @@ read_terms(FILE *fp, si_t si)
+   vindex v = make_vindex(nsize);
+   si_index term;
+ 
+-  while ((term = read_cat(fp, si))) {
++  while ((term = read_cat_term(fp, si))) {
+     if (i >= nsize) {
+       nsize *= 2;
+       vindex_resize(v, nsize);
+@@ -317,13 +345,18 @@ read_terms(FILE *fp, si_t si)
+   }
+ }
+ 
++ void usage() {
++  printf("llncky [-m maxsentlen] [-f from] [-t to] [-o outfile] [-l logfile] corpus grammar\n");
++  exit(EXIT_FAILURE);
++}
++
+ int      
+ main(int argc, char **argv)
+ {
+   si_t          si = make_si(1024);
+-  FILE          *grammarfp = stdin, *yieldfp;
+-  FILE		*tracefp = NULL;  	/* trace output */
+-  FILE		*summaryfp = stderr;	/* end of parse stats output */
++  FILE          *grammarfp = stdin, *yieldfp = NULL;
++  FILE	        *tracefp = NULL;  	/* trace output */
++  FILE		*summaryfp = NULL;	/* end of parse stats output */
+   FILE		*parsefp = stdout;      /* parse trees */
+   FILE		*probfp = NULL;         /* max_neglog_prob */
+ 
+@@ -332,93 +365,174 @@ main(int argc, char **argv)
+   chart		c;
+   vindex 	terms;
+   int		maxsentlen = 0;
+-  int           sentenceno = 0, parsed_sentences = 0, failed_sentences = 0;
++  int           parsed_sentences = 0, failed_sentences = 0;
++  int           sentfrom = 0, sentto = 0;
+   double	sum_neglog_prob = 0;
+ 
+   srand(RAND_SEED);	/* seed random number generator */
+ 
+-  if (argc<2 || argc>4) {
+-    fprintf(stderr, "%s yieldfile [maxsentlen [grammarfile]]\n", argv[0]);
+-    exit(EXIT_FAILURE);
++  int arg;
++  opterr = 0;
++
++  while ((arg = getopt(argc,argv,"m:l:o:f:t:v")) != -1) { 
++    switch (arg) {
++    case 'm':
++      if (!sscanf(optarg, "%d", &maxsentlen)) {
++        fprintf(stderr, "%s: Couldn't parse maxsentlen %s\n", argv[0], optarg);
++        exit(EXIT_FAILURE);
++      }
++      break;
++    case 'f':
++      if (!sscanf(optarg, "%d", &sentfrom)) {
++        fprintf(stderr, "%s: Couldn't parse from %s\n", argv[0], optarg);
++        exit(EXIT_FAILURE);
++      }
++      break;
++    case 't':
++      if (!sscanf(optarg, "%d", &sentto)) {
++        fprintf(stderr, "%s: Couldn't parse from %s\n", argv[0], optarg);
++        exit(EXIT_FAILURE);
++      }
++      break;
++    case 'l': // logfile
++      if ((tracefp = fopen(optarg, "w")) == NULL) {
++        fprintf(stderr, "%s: Couldn't open tracefile %s\n", argv[0], optarg);
++        exit(EXIT_FAILURE);
++      }
++      break;
++    case 'o': // output file (instead of stdout)
++      if ((parsefp = fopen(optarg, "w")) == NULL) {
++        fprintf(stderr, "%s: Couldn't open parsefil %s\n", argv[0], optarg);
++        exit(EXIT_FAILURE);
++      }
++      break;
++    case 'v': // verbose output
++      verbose = 1;
++      break;
++    case '?':
++      if (optopt == 'c')
++        fprintf(stderr, "Option -%c requires an argument.\n", optopt);
++      else if (isprint (optopt))
++        fprintf(stderr, "Unknown option `-%c'.\n", optopt);
++      else 
++        fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
++      return 1;
++    default:
++      abort();
++    }
+   }
+ 
+-  if ((yieldfp = fopen(argv[1], "r")) == NULL) {
++  if ( (argc - optind) != 2 )
++    usage();
++
++  if ((yieldfp = fopen(argv[optind], "r")) == NULL) {
+     fprintf(stderr, "%s: Couldn't open yieldfile %s\n", argv[0], argv[1]);
+     exit(EXIT_FAILURE);
+   }
++  
++  if ((grammarfp = fopen(argv[optind+1], "r")) == NULL) {
++    fprintf(stderr, "%s: Couldn't open grammarfile %s\n", argv[0], optarg);
++    exit(EXIT_FAILURE);
++  }
+ 
+-  if (argc >= 3)
+-    if (!sscanf(argv[2], "%d", &maxsentlen)) {
+-      fprintf(stderr, "%s: Couldn't parse maxsentlen %s\n", argv[0], argv[2]);
+-      exit(EXIT_FAILURE);
+-    }
+-
+-  if (argc >= 4)
+-    if ((grammarfp = fopen(argv[3], "r")) == NULL) {
+-      fprintf(stderr, "%s: Couldn't open grammarfile %s\n", argv[0], argv[3]);
+-      exit(EXIT_FAILURE);
+-    }
+-   
+   g = read_grammar(grammarfp, si);
+   /* write_grammar(tracefp, g, si); */
+ 
+   while ((terms = read_terms(yieldfp, si))) {
+     sentenceno++;
++    edges_proposed = 0;
++
++    if (sentfrom && sentenceno < sentfrom) {
++      vindex_free(terms);
++      continue;
++    }
++    if (sentto && sentenceno > sentto) {
++      sentenceno--;
++      vindex_free(terms);
++      break;
++    }
+ 
+     /* skip if sentence is too long */
+     if (!maxsentlen || (int) terms->n <= maxsentlen) { 
+-      size_t	i;
+ 
+-      if (tracefp) {
+-	fprintf(tracefp, "\nSentence %d:\n", sentenceno);
+-	for (i=0; i<terms->n; i++)
+-	  fprintf(tracefp, " %s", si_index_string(si, terms->e[i]));
+-	fprintf(tracefp, "\n");
+-      }
++      /* size_t	i; */
++      /* if (tracefp) { */
++      /*   fprintf(tracefp, "Sentence %d:", sentenceno); */
++      /*   for (i=0; i<terms->n; i++) */
++      /*     fprintf(tracefp, " %s", si_index_string(si, terms->e[i])); */
++      /*   fprintf(tracefp, "\n"); */
++      /* } */
++
++      time_t start_time = time(0);
+      
+       c = cky(*terms, g, si);
+ 
++      time_t run_time = time(0) - start_time;
++
+       /* fetch best root node */
+ 
+       root_cell = sihashcc_ref(CHART_ENTRY(c, 0, terms->n), g.root_label);
+ 
+       if (root_cell) {
+-	tree parse_tree = bintree_tree(&root_cell->tree, si);
+-	double lprob = (double) root_cell->lprob;
++        tree parse_tree = bintree_tree(&root_cell->tree, si);
++        double lprob = (double) root_cell->lprob;
+ 
+-	parsed_sentences++;
+-	assert(lprob < 0.0);
+-	sum_neglog_prob -= lprob;
+-
+-	if (probfp)
+-	  fprintf(probfp, "max_neglog_prob(%d, %g).\n", 
+-		  sentenceno, -lprob); 
+-
+-	if (tracefp) 
+-	  fprintf(tracefp, " logprob = %g\n", lprob);
+-
+-	if (parsefp) {
+-	  write_tree(parsefp, parse_tree, si);
+-	  fprintf(parsefp, "\n");
+-	  /* write_prolog_tree(parsefp, parse_tree, si); */
+-	}
++        parsed_sentences++;
++        assert(lprob < 0.0);
++        sum_neglog_prob -= lprob;
++
++        if (probfp)
++          fprintf(probfp, "max_neglog_prob(%d, %g).\n", 
++                  sentenceno, -lprob); 
++
++        if (parsefp) {
++          fprintf(parsefp, "%d ", sentenceno);
++          write_tree(parsefp, parse_tree, si);
++          fprintf(parsefp, "\n");
++          /* write_prolog_tree(parsefp, parse_tree, si); */
++          fflush(parsefp);
++
++          if (tracefp) {
++            // print time spent parsing
++            fprintf(tracefp, "sentence %d: %2lu seconds\n", sentenceno, run_time);
++
++            // print the tree with sentno and log prob
++            fprintf(tracefp, "%d %g ", sentenceno, lprob);
++            write_tree(tracefp, parse_tree, si);
++            fprintf(tracefp, "\n");
++        
++            // print number of edges proposed
++            fprintf(tracefp, "%d: proposed %d edges\n", sentenceno, edges_proposed);
++            fflush(tracefp);
++          }
+ 
+-	free_tree(parse_tree);
++        }
++
++        free_tree(parse_tree);
+       }
+ 
+       else {
+-	failed_sentences++;
+-	if (tracefp)
+-	  fprintf(tracefp, "Failed to parse\n");
+-	if (parsefp)
+-	  fprintf(parsefp, "parse_failure.\n");
++        failed_sentences++;
++
++        if (tracefp) {
++          // print time spent parsing
++          fprintf(tracefp, "sentence %d: %2lu seconds\n", sentenceno, run_time);
++
++          // print the tree with sentno and log prob
++          fprintf(tracefp, "%d -inf (TOP)\n", sentenceno);
++        
++          // print number of edges proposed
++          fprintf(tracefp, "%d: proposed %d edges\n", sentenceno, edges_proposed);
++        }
++        if (parsefp)
++          fprintf(parsefp, "%d (TOP)\n", sentenceno);
+       }
+ 
+       chart_free(c, terms->n);			/* free the chart */
+     }
+     else { 					/* sentence too long */
+       if (parsefp)
+-	fprintf(parsefp, "too_long.\n");
++        fprintf(parsefp, "too_long.\n");
+     }
+ 
+     vindex_free(terms);				/*  free the terms */
+@@ -430,13 +544,13 @@ main(int argc, char **argv)
+ 
+   if (summaryfp) {
+     fprintf(summaryfp, "\n%d/%d = %g%% test sentences met the length criteron,"
+-	    " of which %d/%d = %g%% were parsed\n", 
+-	    parsed_sentences+failed_sentences, sentenceno,
+-	    (double) (100.0 * (parsed_sentences+failed_sentences)) / 
+-	                       sentenceno,
+-	    parsed_sentences, parsed_sentences+failed_sentences, 
+-	    (double) (100.0 * parsed_sentences) / 
+-                              (parsed_sentences + failed_sentences));
++            " of which %d/%d = %g%% were parsed\n", 
++            parsed_sentences+failed_sentences, sentenceno,
++            (double) (100.0 * (parsed_sentences+failed_sentences)) / 
++            sentenceno,
++            parsed_sentences, parsed_sentences+failed_sentences, 
++            (double) (100.0 * parsed_sentences) / 
++            (parsed_sentences + failed_sentences));
+     fprintf(summaryfp, "Sum(-log prob) = %g\n", sum_neglog_prob);
+   }
+ 
+Binary files cky.orig2/llncky.o and cky/llncky.o differ
+Binary files cky.orig2/lncky and cky/lncky differ
+diff -rupN --exclude .bzr cky.orig2/lncky.c cky/lncky.c
+--- cky.orig2/lncky.c	2006-12-19 01:26:09.000000000 -0500
++++ cky/lncky.c	2010-11-24 09:54:34.086224000 -0500
+@@ -332,11 +332,13 @@ main(int argc, char **argv)
+   int		maxsentlen = 0;
+   int           sentenceno = 0, parsed_sentences = 0, failed_sentences = 0;
+   double	sum_neglog_prob = 0;
++  int           sentfrom = 0;
++  int           sentto = 0;
+ 
+   srand(RAND_SEED);	/* seed random number generator */
+ 
+-  if (argc<2 || argc>4) {
+-    fprintf(stderr, "%s yieldfile [maxsentlen [grammarfile]]\n", argv[0]);
++  if (argc<2 || argc>6) {
++    fprintf(stderr, "%s yieldfile [maxsentlen [grammarfile [sentfrom sentto]]]\n", argv[0]);
+     exit(EXIT_FAILURE);
+   }
+ 
+@@ -356,13 +358,33 @@ main(int argc, char **argv)
+       fprintf(stderr, "%s: Couldn't open grammarfile %s\n", argv[0], argv[3]);
+       exit(EXIT_FAILURE);
+     }
+-   
++
++  if (argc >= 6) {
++    if (!sscanf(argv[4], "%d", &sentfrom)) {
++      fprintf(stderr, "%s: Couldn't parse sentfrom %s\n", argv[0], argv[4]);
++      exit(EXIT_FAILURE);
++    }
++    if (!sscanf(argv[5], "%d", &sentto)) {
++      fprintf(stderr, "%s: Couldn't parse sentto %s\n", argv[0], argv[5]);
++      exit(EXIT_FAILURE);
++    }
++  }
++
+   g = read_grammar(grammarfp, si);
+   /* write_grammar(tracefp, g, si); */
+ 
+   while ((terms = read_terms(yieldfp, si))) {
+     sentenceno++;
+ 
++    if (sentfrom && sentenceno < sentfrom) {
++      vindex_free(terms);
++      continue;
++    }
++    if (sentto && sentenceno > sentto) {
++      vindex_free(terms);
++      break;
++    }
++
+     /* skip if sentence is too long */
+     if (!maxsentlen || (int) terms->n <= maxsentlen) { 
+       size_t	i;
+Binary files cky.orig2/lncky.o and cky/lncky.o differ
+diff -rupN --exclude .bzr cky.orig2/Makefile cky/Makefile
+--- cky.orig2/Makefile	2006-12-22 11:15:35.000000000 -0500
++++ cky/Makefile	2010-11-24 09:54:34.086224000 -0500
+@@ -5,12 +5,12 @@
+ 
+ CC = gcc
+ CFLAGS = -O6 $(GCCFLAGS) -finline-functions -fomit-frame-pointer -ffast-math -fstrict-aliasing -Wall
+-#LDFLAGS =
++LDFLAGS = -lm
+ 
+ # Debugging
+ #
+-# CFLAGS = -g -finline-functions -Wall
+-# LDFLAGS = -g
++#CFLAGS = -g -finline-functions -Wall
++#LDFLAGS = -g -lm
+ 
+ # Profiling
+ #
+@@ -36,13 +36,13 @@ clean:
+ 	rm -f *.o *.tcov *.d *.out core count-parses ncky f2-21.txt.gz f2-21.lt f22.txt f22.pts.yld
+ 
+ 
+-llncky: llncky.o hash-string.o mmm.o tree.o ledge.o llgrammar.o vindex.o -lm
++llncky: llncky.o hash-string.o mmm.o tree.o ledge.o llgrammar.o vindex.o #-lm
+ 
+-lncky: lncky.o hash-string.o mmm.o tree.o ledge.o lgrammar.o vindex.o -lm
++lncky: lncky.o hash-string.o mmm.o tree.o ledge.o lgrammar.o vindex.o #-lm
+ 
+-ncky: ncky.o hash-string.o mmm.o tree.o ledge.o grammar.o vindex.o -lm
++ncky: ncky.o hash-string.o mmm.o tree.o ledge.o grammar.o vindex.o #-lm
+ 
+-cky: cky.o hash-string.o mmm.o tree.o ledge.o grammar.o vindex.o -lm
++cky: cky.o hash-string.o mmm.o tree.o ledge.o grammar.o vindex.o #-lm
+ 
+ ckyp: ckyp.o hash-string.o mmm.o tree.o ledge.o grammar.o -lm
+ 
+Binary files cky.orig2/mmm.o and cky/mmm.o differ
+Binary files cky.orig2/ncky and cky/ncky differ
+Binary files cky.orig2/ncky.o and cky/ncky.o differ
+diff -rupN --exclude .bzr cky.orig2/test.lt cky/test.lt
+--- cky.orig2/test.lt	2006-07-01 14:41:21.000000000 -0400
++++ cky/test.lt	1969-12-31 19:00:00.000000000 -0500
+@@ -1,7 +0,0 @@
+-1	S1 --> S
+-1	S --> NP VP
+-1	NP --> dogs
+-1	NP --> cats
+-1	VP --> miaow
+-1	VP --> bark
+-
+diff -rupN --exclude .bzr cky.orig2/test.yld cky/test.yld
+--- cky.orig2/test.yld	2006-07-01 14:41:21.000000000 -0400
++++ cky/test.yld	1969-12-31 19:00:00.000000000 -0500
+@@ -1,2 +0,0 @@
+-dogs bark
+-cats miaow
+Binary files cky.orig2/tree.o and cky/tree.o differ
+Binary files cky.orig2/tree-preterms and cky/tree-preterms differ
+Binary files cky.orig2/tree-preterms.o and cky/tree-preterms.o differ
+Binary files cky.orig2/vindex.o and cky/vindex.o differ

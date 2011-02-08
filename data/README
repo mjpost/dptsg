@@ -1,0 +1,86 @@
+I use Mark Johnson's CKY parser to parse with these grammars.
+This requires a few changes to his parser in order to work with
+my grammar format, which I supply in the form of a patch in this
+directory.  To apply it, follow these steps:
+
+1. Download and unpack Mark Johnson's CKY parser (version 6 March
+   2006):
+
+   $ wget http://web.science.mq.edu.au/~mjohnson/code/cky.tbz
+   $ tar xjf cky.tbz
+
+2. Apply the patch:
+
+   $ cd cky
+   $ patch < $DPTSG/data/cky+dptsg.patch
+
+-- USAGE --------------------------------------------------------
+
+To use the parser, you need two scripts: 
+
+1. $DPTSG/scripts/convert_to_johnson.pl
+
+   This script takes a grammar in my format and converts it into the
+   format expected by Johnson's parser.  To do this, TSG fragments are
+   flattened or squashed to depth-one representations.  The mapping is
+   maintained so that the actual fragments can be restored after
+   parsing.  The converted grammar is written to STDOUT, and the
+   mapping to STDERR.  It assumes your top-level rule is TOP.
+   Johnson's grammar determines the TOP symbol from the LHS of the
+   first rule in the grammar file.  If your goal symbol is not TOP,
+   edit the script to change this dummy rule.
+
+2. $DPTSG/scripts/convert_from_johnson.pl
+
+   This script takes a map and a set of flattened TSG parses and
+   restores the full TSG trees.
+
+For example, to parse the sentences in file "sentences" using
+the TSG grammar in tsg_grammar, do
+
+# convert
+$ cat tsg_grammar \
+  | $DPTSG/scripts/convert_to_johnson.pl \
+  > johnson_grammar \
+  2> johnson_grammar_map
+
+# parse
+$ $CKY/llncky sentneces johnson_grammar -o parses -l log
+
+# retrovert
+$ cat parses \
+  | $DPTSG/scripts/convert_from_johnson.pl -map johnson_grammar_map \
+  > parses.full
+
+You could now score the parses using evalb or something.  If you want
+to retain the TSG derivations, you need to tell the second script not
+to remove them:
+
+$ cat parses \
+  | $DPTSG/scripts/convert_from_johnson.pl \
+    -map johnson_grammar_map -scrub 0 -delex 0\
+  > parses.tsg.full
+
+-- EXPLANATION --------------------------------------------------
+
+My grammar format denotes terminals in rules by enclosing them in _s,
+e.g.,
+
+   (S NP (VP (VBD _was_) ) (. _._))
+
+This is because (a) the set of terminals and nonterminals are not
+mutually exclusive and (b) fragments have mixed terminals and
+nonterminals among their frontier (and are not in CNF).
+
+The modification to Johnson's parser takes an input sentence in plain
+form:
+
+    This is an example sentence
+
+and converts it (internally) to
+
+   _This_ _is_ _an_ _example_ _sentence_
+
+It also allows terminals to be entered into the actual chart.
+
+
