@@ -13,7 +13,7 @@ set -u
 o=wsj.trees.$section
 if test ! -e $o || $force; then
     echo "creating $o"
-    cat $PENNWSJTREEBANK/$section/*mrg | ~/code/dpinfer/scripts/oneline_treebank.pl > $o
+    cat $PENNWSJTREEBANK/$section/*mrg | $DPTSG/scripts/oneline_treebank.pl > $o
 else 
     echo "$o already created"
 fi
@@ -21,7 +21,7 @@ fi
 o=wsj.trees.$section.clean
 if test ! -e $o || $force; then
     echo "creating $o"
-    cat wsj.trees.$section | ~/code/dpinfer/scripts/clean.pl > $o
+    cat wsj.trees.$section | $DPTSG/scripts/clean.pl > $o
 else 
     echo "$o already created"
 fi
@@ -30,7 +30,7 @@ fi
 o=wsj.$section.words
 if test ! -e $o || $force; then
     echo "creating $o"
-    cat wsj.trees.$section.clean | ~/code/dpinfer/scripts/print_leaves.pl > $o
+    cat wsj.trees.$section.clean | $DPTSG/scripts/print_leaves.pl > $o
 else 
     echo "$o already created"
 fi
@@ -57,7 +57,7 @@ o=wsj.trees.$section.clean.max40
 if test ! -e $o || $force; then
     echo "creating $o"
 
-    ~/code/dpinfer/scripts/extract_lines.pl -l wsj.$section.words.lines-max40 -f wsj.trees.$section.clean > $o
+    $DPTSG/scripts/extract_lines.pl -l wsj.$section.words.lines-max40 -f wsj.trees.$section.clean > $o
 else 
     echo "$o already created"
 fi
@@ -66,7 +66,7 @@ o=wsj.$section.words.max40.unked
 if test ! -e $o || $force; then
     echo "creating $o"
 
-    cat wsj.trees.$section.clean.max40 | ~/code/dpinfer/scripts/print_leaves.pl -thresh 2 > $o
+    cat wsj.trees.$section.clean.max40 | $DPTSG/scripts/print_leaves.pl -thresh 2 > $o
 else 
     echo "$o already created"
 fi

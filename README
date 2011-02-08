@@ -14,16 +14,12 @@ please see the file README.code.  This file describes the project
 files, along with the steps needed to prepare all of the data to do
 Gibbs sampling.
 
--- INSTALLATION -------------------------------------------------
-
-Set the environment variable DPTSG to the location where you unpacked
-this tarball.
-
--- FURTHER EXPLANATION ------------------------------------------
+-- INSTALLATION AND WALK-THROUGH -------------------------------------
 
 All files and code herein assume a base directory of
-$ENV{HOME}/code/dpinfer.  At some point I hope to parameterize this,
-but for now you will have to change it manually at the top of each script.
+$ENV{DPTSG}.  You should set this in your profile, e.g.,
+
+DPTSG=$HOME/code/dptsg
 
 * List of programs in scripts/
 ** oneline_treebank.pl
