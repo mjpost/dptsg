@@ -43,7 +43,7 @@ sub new {
   # default values
   my $self = { 
     iters => 100,
-    stop => 1.0 - 1e-5,
+    stop => 0.9,
     rundir => $ENV{PWD},
     verbosity => 1,
     alpha => 1,        # default alpha
