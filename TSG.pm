@@ -453,9 +453,10 @@ sub extract_rules_subtree {
 # - node: the node that is the subtree root
 # - unique: annotate binarized nodes to uniquely identify the subtree rooted at them
 # - dir (left,right): type of binarization
-# - collapse (lhs,@): 
+# - collapse (lhs,@,none): 
 # -- lhs: include LHS in binarization
 # -- @: prepend @ sign to binarized nodes (a la Berkeley binarization)
+# -- none: create new nonterminal name by concatening the children
 sub binarize_subtree {
   my $args = shift;
   my %defaults = (
@@ -485,7 +486,16 @@ sub binarize_subtree {
       $newnode->{children} = [splice @{$node->{children}},$node->{numkids}-2,2,$newnode];
     } elsif ($dir eq "left") {
       $newnode->{children} = [splice @{$node->{children}},0,2,$newnode];
-    }
+    } elsif ($dir eq "terminal") {
+	  # binarize terminals first, otherwise do right binarization
+	  my $i;
+	  for ($i = 0; $i + 1 < @{$node->{children}}; $i++) {
+		my $kid = @{$node->{children}}[$i + 1];
+		last if ($kid->{label} =~ /^_.*_$/);
+	  }
+	  $i-- if ($i == (@{$node->{children}} - 1));
+	  $newnode->{children} = [splice @{$node->{children}},$i,2,$newnode];
+	}
     my $kidlabels = join ":", map { $_->{label} } @{$newnode->{children}};
 #     $newnode->{label} = "<$node->{label}:$kidlabels>";  # :$id
 #     $newnode->{label} = "<$kidlabels>";  # :$id

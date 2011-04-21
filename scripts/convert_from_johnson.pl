@@ -51,6 +51,8 @@ while (my $line = <>) {
 
   my $tree = build_subtree($line);
 
+  walk($tree,[\&unbinarize]);
+
   walk($tree,[\&unflatten]);
 
   walk($tree,[\&remove_mark])
@@ -86,6 +88,17 @@ sub substitute_subtree {
   }
 
   return $node;
+}
+
+sub unbinarize {
+  my ($node) = @_;
+
+  for my $i (0..$#{$node->{children}}) {
+	my $kid = @{$node->{children}}[$i];
+	if ($kid->{label} =~ /^</) {
+	  splice(@{$node->{children}},$i,1,@{$kid->{children}});
+	}
+  }
 }
 
 sub unflatten {
