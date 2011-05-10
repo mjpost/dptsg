@@ -25,12 +25,6 @@
 # arguments, with the latter overriding the former (and both
 # overriding code-supplied defaults).
 
-my $basedir;
-BEGIN {
-  $basedir = $ENV{DPTSG};
-  unshift @INC, $basedir;
-}
-
 use strict;
 use warnings;
 use POSIX qw|strftime|;
@@ -40,6 +34,8 @@ use Sampler qw(compress_files);
 use Sampler::TSG;
 use TSG;
 #use Clone qw/clone/;
+
+my $basedir = $ENV{DPTSG};
 
 # parameters (via environment variables and command-line params)
 my %PARAMS = (
