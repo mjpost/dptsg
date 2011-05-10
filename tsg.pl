@@ -116,6 +116,12 @@ if ($iter == 1 || $PARAMS{startover}) {
 
     my $tree = build_subtree($line,$lexicon);
 
+    if ( (scalar @{$tree->{children}}) > 1 ) {
+      my $found = ruleof($tree,1);
+      print "\n* FATAL: tree $.: top-level rule must be unary rule labeled 'TOP'\n  (found '$found')\n";
+      exit(1);
+    }
+
     push(@corpus, $tree)
         if defined $tree;
   }
@@ -140,10 +146,6 @@ if ($iter == 1 || $PARAMS{startover}) {
     chomp $line;
 
     my $tree = build_subtree($line,$lexicon);
-    if ( (scalar @{$tree->{children}}) > 1 ) {
-      print "* FATAL: tree $.: top-level rule must be unary (label should 'TOP')\n";
-      exit(1);
-    }
     push(@corpus, $tree)
         if defined $tree;
   }
