@@ -3,12 +3,6 @@
 # takes a strings of words and a vocab and replaces unknown words
 # with the appropriate UNK
 
-my $basedir;
-BEGIN {
-  $basedir = $ENV{DPTSG};
-  unshift @INC, $basedir;
-}
-
 use strict;
 use warnings;
 use TSG;
