@@ -8,7 +8,7 @@ use warnings;
 use TSG;
 
 my %PARAMS = (
-  lexicon => "$basedir/data/lex.02-21",
+  lexicon => "$ENV{DPTSG}/data/lex.02-21",
   thresh => 2,
 );
 process_params(\%PARAMS,\@ARGV,\%ENV);
