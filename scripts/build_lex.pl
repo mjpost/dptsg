@@ -2,12 +2,6 @@
 
 # builds the lexicon used by everything
 
-my $basedir;
-BEGIN {
-  $basedir = $ENV{DPTSG};
-  unshift @INC, $basedir;
-}
-
 use strict;
 use warnings;
 use TSG;
