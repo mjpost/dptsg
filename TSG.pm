@@ -139,6 +139,7 @@ sub ruleof {
   } else {
     $str .= $node->{label};
   }
+
   return $str;
 }
 
@@ -202,7 +203,7 @@ sub signature {
     $sig = classof($word,$pos);
   }
 
-#  print "SIGNATURE($argword) = $sig\n" unless $sig eq $argword;
+#   print "SIGNATURE($argword) = $sig\n" unless $sig eq $argword;
 
   return $sig;
 }
@@ -414,7 +415,7 @@ sub extract_subtrees {
   my ($node,$list) = @_;
 
   # base case -- child
-  return unless $node->{numkids};
+  return unless exists $node->{numkids} and $node->{numkids} > 0;
 
   # root of subtree
   if (! is_internal($node)) {
@@ -479,6 +480,8 @@ sub binarize_subtree {
 
   map { binarize_subtree({node=>$_,dir=>$dir,not_root=>1,unique=>$unique,collapse=>$collapse}) } @{$node->{children}};
 
+#   print "BINARIZING NODE $node->{label}\n";
+
   # binarize to a right-branching structure
   while ($node->{numkids} > 2) {
     my $newnode = {};
@@ -517,7 +520,13 @@ sub binarize_subtree {
   # binary rule, and handle unary rules. *all* internal nodes need to
   # be marked in a way that unique identifies the subtree rooted at them.
 #   $node->{label} = "[$node->{label}:" . (join ':',map {$_->{label}} @{$node->{children}}) . "]" if ($not_root and $unique);
-  $node->{label} = "[" . (join ':',map {$_->{label}} @{$node->{children}}) . "]" if ($not_root and $unique);
+  if ($not_root and $unique) {
+    if ($collapse eq "lhs") {
+      $node->{label} = "[" . (join ':',$node->{label},map {$_->{label}} @{$node->{children}}) . "]";
+    } else {
+      $node->{label} = "[" . (join ':',map {$_->{label}} @{$node->{children}}) . "]";
+    }
+  }
 
   return $node;
 }
@@ -772,6 +781,7 @@ sub bin_level {
   return $count;
 }
 
+# recursively annotates nodes with their span information
 sub mark_spans {
   my ($node,$index) = @_;
   $index = 0 unless defined $index;
