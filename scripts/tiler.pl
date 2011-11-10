@@ -8,7 +8,7 @@
 
 use strict;
 use warnings;
-use Heap::Simple;
+# use Heap::Simple;
 use List::Util qw|reduce max min sum|;
 use IO::Socket;
 use Getopt::Long;
@@ -17,11 +17,13 @@ use TSG;
 my $GRAMMAR_FILE = undef;
 my $VOCAB_FILE   = undef;
 my $VERBOSE = 0;
+my $KBEST = 1;
 
 my $optresult = GetOptions
     ("grammar=s"  => \$GRAMMAR_FILE,
      "vocab=s"    => \$VOCAB_FILE,
      "verbose=i"  => \$VERBOSE,
+	 "k=i"        => \$KBEST,
     );
 
 my (%constraints,%chart,%backpointers,%rules);
@@ -59,7 +61,10 @@ while (my $treestr = <>) {
   my @orig_words = split(' ', $sentence);
   my $pos = 1;
   my @words = map { lex(signature($_, $pos++)) } @orig_words;
+
   my $sentlen = scalar(@words);
+
+  my $start_time = time;
 
   # seed the chart
   for my $pos (0..$#words) {
@@ -73,7 +78,7 @@ while (my $treestr = <>) {
     for (my $i = 0; $i <= $sentlen - $span; $i++) {
       my $j = $i + $span;
 
-#       print "SPAN($i..$j)";
+	  # print STDERR "SPAN($i..$j)\n";
 #       if (exists $constraints{$i,$j}) {
 #         print " [CONSTRAINTS: " . join(",", keys %{$constraints{$i,$j}}) . "]\n";
 #       } else {
@@ -102,26 +107,28 @@ while (my $treestr = <>) {
       } # end binary rules
 
       # unary rules
-      for (my $times = 1; $times <= 3; $times++) {
-        my $added_edge = 0;
-        foreach my $edge (values %{$chart{$i,$j}}) {
-          my $rules = rules($edge->{label});
-          while (my ($lhs,$prob) = each %$rules) {
-            next unless meets_constraint($lhs, $i, $j);
-            my $newedge = {
-              label => $lhs,
-              i     => $i,
-              j     => $j,
-              left  => $edge,
-              right => undef,
-              score => $edge->{score} + log($prob)
-            };
-            add_edge($newedge);
-            $added_edge = 1;
-          }
-        }
-        last unless $added_edge;
-      }
+	  my @edges = values %{$chart{$i,$j}};
+	  while (@edges) {
+		my $edge = shift @edges;
+		my $rules = rules($edge->{label});
+		while (my ($lhs,$prob) = each %$rules) {
+		  next unless meets_constraint($lhs, $i, $j);
+		  my $newedge = {
+			label => $lhs,
+			i     => $i,
+			j     => $j,
+			left  => $edge,
+			right => undef,
+			score => $edge->{score} + log($prob)
+		  };
+
+		  # further explore that edge unless we've already done so
+		  push(@edges, $newedge)
+			  unless (exists $chart{$i,$j}{$newedge->{label}});
+
+		  add_edge($newedge);
+		}
+      } 
 #       if (exists $constraints{$i,$j}) {
 #         foreach my $label (keys %{$constraints{$i,$j}}) {
 #           if (! exists $chart{$i,$j}{$label}) {
@@ -146,6 +153,9 @@ while (my $treestr = <>) {
     my $deriv = build_subtree_oneline(unbinarize(parse2subtree($top)),1);
     print "$deriv\n";
   }
+
+  my $run_time = time - $start_time;
+  # print STDERR "run time = $run_time seconds\n";
 }
 
 
@@ -172,14 +182,21 @@ sub add_edge {
 sub add_backpointer {
   my ($label, $i, $j, $edge) = @_;
 
+  # don't bother unless we're going to use it
+  return unless $KBEST > 1;
+
   if (! exists $backpointers{$label,$i,$j}) {
-    $backpointers{$label,$i,$j} = new Heap::Simple(order => sub {
-      my ($e1, $e2) = @_;
-      return $e1->{score} <=> $e2->{score}; });
+    # $backpointers{$label,$i,$j} = new Heap::Simple(order => sub {
+    #   my ($e1, $e2) = @_;
+    #   return $e1->{score} <=> $e2->{score}; });
+	$backpointers{$label,$i,$j} = [];
   }
 
-  my $heap = $backpointers{$label,$i,$j};
-  $heap->insert($edge);
+  # my $heap = $backpointers{$label,$i,$j};
+  # $heap->insert($edge);
+
+  # TODO: for kbest these need to be sorted!
+  push(@{$backpointers{$label,$i,$j}}, $edge);
 }
 
 sub meets_constraint {
@@ -219,6 +236,7 @@ sub load_grammar {
     open GRAMMAR, $file or die "can't read grammar file '$file'";
   }
 
+  my $start_time = time;
   while (my $line = <GRAMMAR>) {
     my ($prob, $rule) = split(' ', $line, 2);
     
@@ -248,6 +266,10 @@ sub load_grammar {
     }
   }
   close GRAMMAR;
+
+  my $time_taken = time - $start_time;
+
+  print STDERR "Grammar loading took $time_taken seconds\n";
 
 #   foreach my $rhs (keys %rules) {
 #     while (my ($lhs,$prob) = each %{$rules{$rhs}}) {
