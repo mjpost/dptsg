@@ -17,9 +17,13 @@ Gibbs sampling.
 -- INSTALLATION AND WALK-THROUGH -------------------------------------
 
 All files and code herein assume a base directory of
-$ENV{DPTSG}.  You should set this in your profile, e.g.,
+$ENV{DPTSG}.  You should set this in your profile, e.g., in bash,
 
-DPTSG=$HOME/code/dptsg
+$ export DPTSG=$HOME/code/dptsg
+
+You will also need to put this directory in your Perl search path:
+
+$ export PERL5LIB+=:$DPTSG
 
 * List of programs in scripts/
 ** oneline_treebank.pl

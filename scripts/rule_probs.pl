@@ -81,18 +81,6 @@ foreach my $lhs (keys %COUNTS) {
   }
 }
 
-# compute the mass reserved for unknown words for each preterminal.
-# that mass is the percentage (by token) of words with count 1
-my %mass_for_unseen;
-foreach my $tag (keys %UNKCOUNTS) {
-  my $sum = 0;
-  while (my ($rule,$count) = each %{$UNKCOUNTS{$tag}}) {
-    $sum++ if $count == 1;
-  }
-  die "Zero count for tag $tag!" unless $LHS_COUNTS{$tag};
-  $mass_for_unseen{$tag} = $sum / $LHS_COUNTS{$tag};
-}  
-
 # print out the counts or the rule probabiliteis
 foreach my $lhs (keys %COUNTS) {
   foreach my $rule (sort { $COUNTS{$lhs}{$b} <=> $COUNTS{$lhs}{$a} } keys %{$COUNTS{$lhs}}) {
@@ -102,30 +90,8 @@ foreach my $lhs (keys %COUNTS) {
       print "$COUNTS{$lhs}{$rule} $rule\n";
     } else {
       # print the rule probability
-      my $pr;
-      if ($rule =~ /^\(\S+ _(\S+)_\)$/) {
-        my $word = $1;
-
-        # the probability for preterminals has to make space for
-        # unknown word rewrites
-        $pr = (1.0 - $mass_for_unseen{$lhs}) * ($COUNTS{$lhs}{$rule} / $LHS_COUNTS{$lhs});
-      } else {
-        $pr = ($COUNTS{$lhs}{$rule} / $LHS_COUNTS{$lhs});
-      }
-      if ($pr > 0) {
-        print "$pr $rule\n";
-      }
-    }
-  }
-}
-
-# now print the distribution over unknown word tokens, but only if we
-# are outputting a probability distribution instead of counts
-unless ($PARAMS{counts}) {
-  foreach my $tag (keys %UNKCOUNTS) {
-    foreach my $class (keys %{$UNKCOUNTS{$tag}}) {
-      my $pr = $mass_for_unseen{$tag} * $UNKCOUNTS{$tag}{$class} / $LHS_COUNTS{$tag};
-      print "$pr ($tag _${class}_)\n" if $pr > 0;
+      my $pr = $COUNTS{$lhs}{$rule} / $LHS_COUNTS{$lhs};
+      print "$pr $rule\n";
     }
   }
 }

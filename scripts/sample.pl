@@ -4,16 +4,12 @@
 # usage:
 # sample.pl -grammar <grammar file> -n <num samples> -len <max sentlen>
 
-my $basedir;
-BEGIN {
-  $basedir = $ENV{DPTSG};
-  unshift @INC, $basedir;
-}
-
 use strict;
 use warnings;
 use TSG;
 # use tsg_utils;
+
+my $basedir = $ENV{DPTSG};
 
 my %PARAMS = (
   n => 1,               # number of samples

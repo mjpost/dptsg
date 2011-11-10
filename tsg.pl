@@ -25,12 +25,6 @@
 # arguments, with the latter overriding the former (and both
 # overriding code-supplied defaults).
 
-my $basedir;
-BEGIN {
-  $basedir = $ENV{DPTSG};
-  unshift @INC, $basedir;
-}
-
 use strict;
 use warnings;
 use POSIX qw|strftime|;
@@ -40,6 +34,8 @@ use Sampler qw(compress_files);
 use Sampler::TSG;
 use TSG;
 #use Clone qw/clone/;
+
+my $basedir = $ENV{DPTSG};
 
 # parameters (via environment variables and command-line params)
 my %PARAMS = (
@@ -115,6 +111,12 @@ if ($iter == 1 || $PARAMS{startover}) {
     $sentno++;
 
     my $tree = build_subtree($line,$lexicon);
+
+    if ( (scalar @{$tree->{children}}) > 1 ) {
+      my $found = ruleof($tree,1);
+      print "\n* FATAL: tree $.: top-level rule must be unary rule labeled 'TOP'\n  (found '$found')\n";
+      exit(1);
+    }
 
     push(@corpus, $tree)
         if defined $tree;
