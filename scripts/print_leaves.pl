@@ -13,13 +13,16 @@ use warnings;
 use TSG;
 
 my %PARAMS = (
-  lexicon => "$basedir/data/lex.02-21",
+  lexicon => "/dev/null",
   thresh => 0,
   '*tags' => 0,
   words => 1,
 );
 process_params(\%PARAMS,\@ARGV,\%ENV);
-my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
+
+my $lexicon = $PARAMS{thresh} > 0
+	? read_lexicon($PARAMS{lexicon},$PARAMS{thresh})
+	: undef;
 
 while (<>) {
   chomp;

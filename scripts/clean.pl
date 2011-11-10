@@ -5,20 +5,11 @@
 use strict;
 use warnings;
 
-my $basedir;
-BEGIN {
-  $basedir = $ENV{DPTSG};
-  unshift @INC, $basedir;
-}
-
 use TSG;
 
 my %PARAMS = (
-  lexicon => "$basedir/data/lex.02-21",
-  thresh => 1,
+  thresh => 0,
 );
-process_params(\%PARAMS,\@ARGV,\%ENV);
-my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
 
 while (my $line = <>) {
   chomp $line;

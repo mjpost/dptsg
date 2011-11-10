@@ -13,17 +13,15 @@ use warnings;
 use TSG;
 
 my %PARAMS = (
-  lexicon => "$basedir/data/lex.02-21",
-  thresh => 0,
+  mark => '-'
 );
 # process paramters and read in lexicon
 process_params(\%PARAMS,\@ARGV,\%ENV);
-my $lexicon = read_lexicon($PARAMS{lexicon},$PARAMS{thresh});
 
 while (my $line = <>) {
   chomp($line);
 
-  my $subtree = build_subtree($line,$lexicon);
+  my $subtree = build_subtree($line);
   walk($subtree,[\&mark_parent]);
   
   walk_postorder($subtree,[\&annotate_with_parent]);
@@ -39,9 +37,9 @@ sub annotate_with_parent {
     my $label = $node->{label};
     if ($label =~ /^\*/) {
       $node->{label} =~ s/^\*//;
-      $node->{label} = "*$node->{label}-$node->{parent}->{label}";
+      $node->{label} = "*$node->{label}$PARAMS{mark}$node->{parent}->{label}";
     } else {
-      $node->{label} = "$node->{label}-$node->{parent}->{label}";
+      $node->{label} = "$node->{label}$PARAMS{mark}$node->{parent}->{label}";
     }
   }
 }
