@@ -23,7 +23,7 @@ $ export DPTSG=$HOME/code/dptsg
 
 You will also need to put this directory in your Perl search path:
 
-$ export PERL5LIB+=$DPTSG
+$ export PERL5LIB+=:$DPTSG
 
 * List of programs in scripts/
 ** oneline_treebank.pl
