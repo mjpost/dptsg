@@ -93,11 +93,22 @@ sub substitute_subtree {
 sub unbinarize {
   my ($node) = @_;
 
-  for (my $i = 0; $i <= $#{$node->{children}}; $i++) {
-  # for my $i (0..$#{$node->{children}}) {
-	my $kid = @{$node->{children}}[$i];
-	if ($kid->{label} =~ /^</) {
-	  splice(@{$node->{children}},$i,1,@{$kid->{children}});
+  # if the node has any kids, see if they need to be unbinarized
+  if (@{$node->{children}}) {
+	my $kidno = 0;
+	for (;;) {
+	  my $kid = @{$node->{children}}[$kidno];
+
+	  # if the kid needs to be unbinarized, do it, and don't increment
+	  # the index, since we might have to recursively consider the
+	  # grandkid that replaced the kid; otherwise, we do increment
+	  if ($kid->{label} =~ /^</) {
+		splice(@{$node->{children}},$kidno,1,@{$kid->{children}});
+	  } else {
+		$kidno++;
+	  }
+
+	  last if $kidno >= @{$node->{children}};
 	}
   }
 }
