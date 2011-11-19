@@ -26,7 +26,7 @@ my $optresult = GetOptions
 	 "k=i"        => \$KBEST,
     );
 
-my (%constraints,%chart,%backpointers,%rules);
+my (%constraints,@chart,%backpointers,%rules);
 
 if (! defined $GRAMMAR_FILE or ! -e $GRAMMAR_FILE) {
   print "* FATAL: couldn't find grammar file (--grammar)\n";
@@ -86,8 +86,8 @@ while (my $treestr = <>) {
 #       }
       # binary rules
       for (my $k = $i + 1; $k <= $j - 1; $k++) {
-        while (my ($left_label,$left_edge) = each %{$chart{$i,$k}}) {
-          while (my ($right_label,$right_edge) = each %{$chart{$k,$j}}) {
+        while (my ($left_label,$left_edge) = each %{$chart[$i][$k]}) {
+          while (my ($right_label,$right_edge) = each %{$chart[$k][$j]}) {
             my $rules = rules($left_label,$right_label);
             while (my ($lhs,$prob) = each %$rules) {
               next unless meets_constraint($lhs,$i,$j);
@@ -107,7 +107,7 @@ while (my $treestr = <>) {
       } # end binary rules
 
       # unary rules
-	  my @edges = values %{$chart{$i,$j}};
+	  my @edges = values %{$chart[$i][$j]};
 	  while (@edges) {
 		my $edge = shift @edges;
 		my $rules = rules($edge->{label});
@@ -124,7 +124,7 @@ while (my $treestr = <>) {
 
 		  # further explore that edge unless we've already done so
 		  push(@edges, $newedge)
-			  unless (exists $chart{$i,$j}{$newedge->{label}});
+			  unless (exists $chart[$i][$j]{$newedge->{label}});
 
 		  add_edge($newedge);
 		}
@@ -139,7 +139,7 @@ while (my $treestr = <>) {
     }
   } # end span loop
 
-  my $top = $chart{0,$sentlen}{TOP};
+  my $top = $chart[0][$sentlen]{TOP};
 
   if (! defined $top) {
     print "(())\n";
@@ -165,13 +165,13 @@ sub add_edge {
   my $i = $edge->{i};
   my $j = $edge->{j};
 
-  if (! exists $chart{$i,$j}{$label}) {
-    $chart{$i,$j}{$label} = $edge;
+  if (! exists $chart[$i][$j]{$label}) {
+    $chart[$i][$j]{$label} = $edge;
   } else {
-    my $old_edge = $chart{$i,$j}{$label};
+    my $old_edge = $chart[$i][$j]{$label};
 
     if ($edge->{score} > $old_edge->{score}) {
-      $chart{$i,$j}{$label} = $edge;
+      $chart[$i][$j]{$label} = $edge;
     }
   }
   add_backpointer($label, $i, $j, $edge);
