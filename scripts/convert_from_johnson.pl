@@ -93,7 +93,8 @@ sub substitute_subtree {
 sub unbinarize {
   my ($node) = @_;
 
-  for my $i (0..$#{$node->{children}}) {
+  for (my $i = 0; $i <= $#{$node->{children}}; $i++) {
+  # for my $i (0..$#{$node->{children}}) {
 	my $kid = @{$node->{children}}[$i];
 	if ($kid->{label} =~ /^</) {
 	  splice(@{$node->{children}},$i,1,@{$kid->{children}});
