@@ -310,6 +310,11 @@ sub build_subtree {
       # set the number of children I have (since we know it now)
       $top->{numkids} = scalar @{$top->{children}};
       $top->{frontier} = join(' ', map { $_->{frontier} } @{$top->{children}});
+
+	  # set the number of CFG rules I have (since we know it now)
+	  $top->{numrules} = 1 + sum(map { $_->{numrules} } @{$top->{children}});
+	  $top->{numlexrules} = sum(map { $_->{numlexrules} } @{$top->{children}});
+
       # compute the head position
       my $rhs = join(" ", map {$_->{label}} @{$top->{children}});
       # my $hpos = &head_pos(clean($top->{label}), map {clean($_->{label})} @{$top->{children}});
@@ -333,6 +338,8 @@ sub build_subtree {
       $c->{numkids} = 0;
       $c->{frontier} = $token;
       $c->{depth} = 0;
+	  $c->{numrules} = 0;
+	  $c->{numlexrules} = (islex($c->{label})) ? 1 : 0;
       # $c->{head} = $lexicon ? lex(signature($token)) : $token;
 
       # add oneself to one's parent's list of children
