@@ -48,9 +48,9 @@ while (my $line = <>) {
 
   $line =~ s/\s*$//;
 
-  if ($line =~ /^\d+(\.\d+)? /) {  # reading in counts
-	# replace lexical items with their signatures
-	$line =~ s/_(\S+?)_/"_" . signature($1) . "_"/eg;
+  if ($line =~ /^\d+(\.\d+)?\s/) {  # reading in counts
+		# replace lexical items with their signatures
+		$line =~ s/_(\S+?)_/"_" . signature($1) . "_"/eg;
 
     my ($count,$label,@rest) = split ' ', $line;
     my $rule = join(" ", $label, @rest);
