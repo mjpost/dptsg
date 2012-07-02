@@ -8,7 +8,7 @@ $|++;  # no output buffering
 # cat trees | treematch.pl -grammar GRAMMAR
 
 BEGIN {
-  push @INC, "$ENV{HOME}/code/dptsg";
+  push @INC, "$ENV{DPTSG}";
 }
 
 use strict;
