@@ -4,16 +4,12 @@
 # "Do all fragments count?" (Bod, 2003).
 # this script actually just extracts all depth 2+ fragments
 
-my $basedir;
-BEGIN {
-  $basedir = "$ENV{HOME}/code/dpdop";
-  unshift @INC, $basedir;
-}
-
 use strict;
 use warnings;
 use List::Util qw|max|;
 use TSG;
+
+my $basedir = $ENV{DPTSG};
 
 my $min_height  = shift || 2;
 my $max_height  = shift || 14;
@@ -55,9 +51,11 @@ foreach my $height ($min_height..$max_height) {
 #     print "Expanding ", rep($node)->{str}, $/;
     while (height($node) < $height) {
 
+	  # grab a random node, mark it as internal
       my $nextnode = splice @nodes, int(rand @nodes), 1;
       $nextnode->{label} = "*" . $nextnode->{label};
 
+	  # add that nodes children to the list of nodes available for expansion
       push @nodes, @{$nextnode->{children}};
     }
 
