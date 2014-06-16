@@ -25,8 +25,8 @@ my (@corpus);
 while (my $line = <>) {
   chomp $line;
 
-  my $tree = build_tree($line,0,$lexicon);
-  mark_height($tree);
+  my $tree = build_subtree($line,0,$lexicon);
+  mark_subtree_height($tree);
   push @corpus, $tree;
 }
 
@@ -51,15 +51,17 @@ foreach my $height ($min_height..$max_height) {
 #     print "Expanding ", rep($node)->{str}, $/;
     while (height($node) < $height) {
 
-	  # grab a random node, mark it as internal
+      # grab a random node, mark it as internal
       my $nextnode = splice @nodes, int(rand @nodes), 1;
-      $nextnode->{label} = "*" . $nextnode->{label};
+      if ($nextnode->{height} != 0) {
+        $nextnode->{label} = "*" . $nextnode->{label};
+      }
 
-	  # add that nodes children to the list of nodes available for expansion
+      # add that nodes children to the list of nodes available for expansion
       push @nodes, @{$nextnode->{children}};
     }
 
-    my $rulestr = rep($node)->{str};
+    my $rulestr = ruleof($node);
 
     # prune the subtree if it doesn't meet the requirements of Bod (2001)
     # (i.e., > 12 lexical items, unlexicalized with height > 6)
@@ -104,20 +106,6 @@ sub get_nodes {
     push @$array, $subtree;
     map { get_nodes($_,$array,$height) } @{$subtree->{children}};
   }
-}
-
-sub mark_height {
-  my $node = shift;
-
-  if (! @{$node->{children}}) {
-    $node->{height} = 1;
-    return $node;
-  }    
-
-  map { mark_height($_) } @{$node->{children}};
-
-  $node->{height} = 1 + max( map { $_->{height} } @{$node->{children}});
-  return $node;
 }
 
 sub height {
