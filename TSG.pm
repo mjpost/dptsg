@@ -124,7 +124,7 @@ sub ruleof {
   $label =~ s/^\*//;
 
   my $str;
-  if (scalar @{$node->{children}}) {
+  if ($#{$node->{children}} >= 0) {
     $str = "($label";
     foreach my $kid (@{$node->{children}}) {
       if (!$stop and $kid->{label} =~ /^\*/) {
